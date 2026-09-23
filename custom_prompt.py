@@ -9,6 +9,19 @@ PROMPT = (
     "photorealistic"
 )
 
+PROMPT = (
+    "close-up of a flexible industrial hose near its connector, "
+    "a small realistic tear in the hose surface, "
+    "a strong pressurized stream of clear water leaking directly from the torn area, "
+    "a clearly visible transparent water jet with bright specular highlights, "
+    "small airborne droplets and glossy wet reflections around the damaged hose, "
+    "realistic industrial CCTV image, "
+    "same hose, same connector, same equipment, "
+    "same lighting and camera perspective, "
+    "localized damage and water leakage only, "
+    "photorealistic"
+)
+
 NEGATIVE_PROMPT = (
     "extra hoses, extra connectors, extra pipes, new objects, "
     "hands, people, tools, text, labels, "
