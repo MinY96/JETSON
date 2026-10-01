@@ -1,131 +1,485 @@
-{
-  "roi": "left",
-  "overall": {
-    "count": 90,
-    "peak_hit_rate": 0.9111111111111111,
-    "mean_inside_outside_ratio": 1.8188067776702208,
-    "median_inside_outside_ratio": 1.870964208110777,
-    "top1_precision": 0.8385470085470086,
-    "top1_recall": 0.2303788435486509,
-    "top5_precision": 0.6306248076331179,
-    "top5_recall": 0.6580850542227933,
-    "top10_precision": 0.49068126867315853,
-    "top10_recall": 0.7923723619487301,
-    "image_score_mean": 28.620736821492514,
-    "image_score_min": 22.188661575317383,
-    "image_score_max": 35.43134689331055
-  },
-  "by_defect_type": {
-    "droplet": {
-      "count": 30,
-      "peak_hit_rate": 1.0,
-      "mean_inside_outside_ratio": 1.9743262884771968,
-      "median_inside_outside_ratio": 1.9693952891904876,
-      "top1_precision": 0.8834358974358977,
-      "top1_recall": 0.3934072059778451,
-      "top5_precision": 0.4936493279983584,
-      "top5_recall": 0.9174543288597026,
-      "top10_precision": 0.2783382879417347,
-      "top10_recall": 0.9951787932567685,
-      "image_score_mean": 30.291657384236654,
-      "image_score_min": 26.260404586791992,
-      "image_score_max": 33.23169708251953
-    },
-    "thin_stream": {
-      "count": 30,
-      "peak_hit_rate": 0.7333333333333333,
-      "mean_inside_outside_ratio": 1.9044702908048199,
-      "median_inside_outside_ratio": 1.8930375800673582,
-      "top1_precision": 0.6455384615384615,
-      "top1_recall": 0.2565573851495929,
-      "top5_precision": 0.4409664512157588,
-      "top5_recall": 0.856886759747185,
-      "top10_precision": 0.2597410178193186,
-      "top10_recall": 0.9922031716679364,
-      "image_score_mean": 29.55243174235026,
-      "image_score_min": 26.736854553222656,
-      "image_score_max": 35.43134689331055
-    },
-    "wet_spot": {
-      "count": 30,
-      "peak_hit_rate": 1.0,
-      "mean_inside_outside_ratio": 1.5776237537286455,
-      "median_inside_outside_ratio": 1.6007564727027623,
-      "top1_precision": 0.9866666666666665,
-      "top1_recall": 0.0411719395185147,
-      "top5_precision": 0.9572586436852364,
-      "top5_recall": 0.1999140740614922,
-      "top10_precision": 0.9339645002584225,
-      "top10_recall": 0.38973512092148516,
-      "image_score_mean": 26.018121337890626,
-      "image_score_min": 22.188661575317383,
-      "image_score_max": 31.42776870727539
-    }
-  }
-}
+def make_overlay(
+    image_rgb: np.ndarray,
+    anomaly_map: np.ndarray,
+    gt_mask: np.ndarray,
+    *,
+    defect_type: str,
+    image_score: float,
+    metrics: dict[str, Any],
+) -> np.ndarray:
 
-{
-  "roi": "right",
-  "overall": {
-    "count": 90,
-    "peak_hit_rate": 0.8888888888888888,
-    "mean_inside_outside_ratio": 1.834786043835816,
-    "median_inside_outside_ratio": 1.8455425589432122,
-    "top1_precision": 0.7842125603864734,
-    "top1_recall": 0.23582067448591434,
-    "top5_precision": 0.5954759697110183,
-    "top5_recall": 0.640038731442343,
-    "top10_precision": 0.4798408283109256,
-    "top10_recall": 0.8229587656030714,
-    "image_score_mean": 26.011073854234482,
-    "image_score_min": 20.503721237182617,
-    "image_score_max": 30.620651245117188
-  },
-  "by_defect_type": {
-    "droplet": {
-      "count": 30,
-      "peak_hit_rate": 1.0,
-      "mean_inside_outside_ratio": 1.9010976194922056,
-      "median_inside_outside_ratio": 1.8973722408095266,
-      "top1_precision": 0.7241739130434782,
-      "top1_recall": 0.4349229035906604,
-      "top5_precision": 0.3656467315716272,
-      "top5_recall": 0.9043340757147246,
-      "top10_precision": 0.20635141400092719,
-      "top10_recall": 0.9838779203581764,
-      "image_score_mean": 27.01312338511149,
-      "image_score_min": 20.503721237182617,
-      "image_score_max": 30.620651245117188
-    },
-    "thin_stream": {
-      "count": 30,
-      "peak_hit_rate": 0.6666666666666666,
-      "mean_inside_outside_ratio": 1.7956795708487547,
-      "median_inside_outside_ratio": 1.7892211185733964,
-      "top1_precision": 0.6284637681159422,
-      "top1_recall": 0.21410272356360494,
-      "top5_precision": 0.4449582753824756,
-      "top5_recall": 0.7312557571797634,
-      "top10_precision": 0.29469170143718126,
-      "top10_recall": 0.9473261985541179,
-      "image_score_mean": 25.52663542429606,
-      "image_score_min": 21.84228515625,
-      "image_score_max": 30.417564392089844
-    },
-    "wet_spot": {
-      "count": 30,
-      "peak_hit_rate": 1.0,
-      "mean_inside_outside_ratio": 1.8075809411664876,
-      "median_inside_outside_ratio": 1.7973103798117092,
-      "top1_precision": 1.0,
-      "top1_recall": 0.058436396303477654,
-      "top5_precision": 0.9758229021789523,
-      "top5_recall": 0.284526361432541,
-      "top10_precision": 0.9384793694946687,
-      "top10_recall": 0.5376721778969197,
-      "image_score_mean": 25.493462753295898,
-      "image_score_min": 21.564435958862305,
-      "image_score_max": 28.216306686401367
-    }
-  }
-}
+    # ========================================================
+    # Display size
+    # ========================================================
+
+    original_height, original_width = (
+        image_rgb.shape[:2]
+    )
+
+    # 각 panel이 최소 800px width가 되도록 확대
+    # 동시에 최소 3배 확대
+    display_scale = max(
+        3.0,
+        800.0 / original_width,
+    )
+
+    display_width = int(
+        round(
+            original_width
+            * display_scale
+        )
+    )
+
+    display_height = int(
+        round(
+            original_height
+            * display_scale
+        )
+    )
+
+    # ========================================================
+    # Resize Original
+    # ========================================================
+
+    image_bgr = cv2.cvtColor(
+        image_rgb,
+        cv2.COLOR_RGB2BGR,
+    )
+
+    image_display = cv2.resize(
+        image_bgr,
+        (
+            display_width,
+            display_height,
+        ),
+        interpolation=cv2.INTER_CUBIC,
+    )
+
+    # ========================================================
+    # Resize anomaly map
+    # ========================================================
+
+    anomaly_display = cv2.resize(
+        anomaly_map.astype(
+            np.float32
+        ),
+        (
+            display_width,
+            display_height,
+        ),
+        interpolation=cv2.INTER_LINEAR,
+    )
+
+    normalized = normalize_map(
+        anomaly_display
+    )
+
+    heatmap = cv2.applyColorMap(
+        normalized,
+        cv2.COLORMAP_JET,
+    )
+
+    # ========================================================
+    # Heatmap Overlay
+    # ========================================================
+
+    overlay = cv2.addWeighted(
+        image_display,
+        0.55,
+        heatmap,
+        0.45,
+        0,
+    )
+
+    # ========================================================
+    # Resize GT mask
+    # ========================================================
+
+    mask_u8 = (
+        gt_mask.astype(
+            np.uint8
+        )
+        * 255
+    )
+
+    mask_display = cv2.resize(
+        mask_u8,
+        (
+            display_width,
+            display_height,
+        ),
+        interpolation=cv2.INTER_NEAREST,
+    )
+
+    gt_display = (
+        mask_display > 0
+    )
+
+    # ========================================================
+    # GT contour
+    # ========================================================
+
+    contours, _ = cv2.findContours(
+        mask_display,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE,
+    )
+
+    cv2.drawContours(
+        overlay,
+        contours,
+        -1,
+        (
+            255,
+            255,
+            255,
+        ),
+        4,
+        cv2.LINE_AA,
+    )
+
+    # ========================================================
+    # Peak position
+    # ========================================================
+
+    peak_x = int(
+        round(
+            metrics[
+                "peak_x"
+            ]
+            * display_scale
+        )
+    )
+
+    peak_y = int(
+        round(
+            metrics[
+                "peak_y"
+            ]
+            * display_scale
+        )
+    )
+
+    cv2.drawMarker(
+        overlay,
+        (
+            peak_x,
+            peak_y,
+        ),
+        (
+            0,
+            255,
+            255,
+        ),
+        markerType=(
+            cv2.MARKER_CROSS
+        ),
+        markerSize=30,
+        thickness=4,
+        line_type=cv2.LINE_AA,
+    )
+
+    # Peak 주변 원도 추가
+    cv2.circle(
+        overlay,
+        (
+            peak_x,
+            peak_y,
+        ),
+        16,
+        (
+            0,
+            255,
+            255,
+        ),
+        3,
+        cv2.LINE_AA,
+    )
+
+    # ========================================================
+    # GT Mask visualization
+    # ========================================================
+
+    mask_visual = cv2.cvtColor(
+        mask_display,
+        cv2.COLOR_GRAY2BGR,
+    )
+
+    # Mask contour를 한 번 더 표시
+    cv2.drawContours(
+        mask_visual,
+        contours,
+        -1,
+        (
+            0,
+            255,
+            255,
+        ),
+        4,
+        cv2.LINE_AA,
+    )
+
+    # ========================================================
+    # Individual image title bars
+    # ========================================================
+
+    title_height = 70
+
+    def add_title(
+        image: np.ndarray,
+        title: str,
+    ) -> np.ndarray:
+
+        title_bar = np.zeros(
+            (
+                title_height,
+                image.shape[1],
+                3,
+            ),
+            dtype=np.uint8,
+        )
+
+        cv2.putText(
+            title_bar,
+            title,
+            (
+                20,
+                47,
+            ),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.05,
+            (
+                235,
+                235,
+                235,
+            ),
+            2,
+            cv2.LINE_AA,
+        )
+
+        return np.vstack(
+            [
+                title_bar,
+                image,
+            ]
+        )
+
+    original_panel = add_title(
+        image_display,
+        "Synthetic NG",
+    )
+
+    anomaly_panel = add_title(
+        overlay,
+        "PatchCore Anomaly Map + GT",
+    )
+
+    mask_panel = add_title(
+        mask_visual,
+        "Synthetic GT Mask",
+    )
+
+    # ========================================================
+    # Horizontal content
+    # ========================================================
+
+    content = np.hstack(
+        [
+            original_panel,
+            anomaly_panel,
+            mask_panel,
+        ]
+    )
+
+    total_width = (
+        content.shape[1]
+    )
+
+    # ========================================================
+    # Large information panel
+    # ========================================================
+
+    panel_height = 260
+
+    panel = np.zeros(
+        (
+            panel_height,
+            total_width,
+            3,
+        ),
+        dtype=np.uint8,
+    )
+
+    # --------------------------------------------------------
+    # Main title
+    # --------------------------------------------------------
+
+    cv2.putText(
+        panel,
+        (
+            f"{defect_type.upper()} "
+            f"| PatchCore Localization Validation"
+        ),
+        (
+            30,
+            48,
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.20,
+        (
+            255,
+            255,
+            255,
+        ),
+        3,
+        cv2.LINE_AA,
+    )
+
+    # --------------------------------------------------------
+    # Row 1
+    # --------------------------------------------------------
+
+    line1 = (
+        f"Image Score : "
+        f"{image_score:.3f}"
+        f"      "
+        f"Peak Hit : "
+        f"{metrics['peak_hit']}"
+        f"      "
+        f"Peak : "
+        f"({metrics['peak_x']}, "
+        f"{metrics['peak_y']})"
+    )
+
+    cv2.putText(
+        panel,
+        line1,
+        (
+            30,
+            100,
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.90,
+        (
+            220,
+            220,
+            220,
+        ),
+        2,
+        cv2.LINE_AA,
+    )
+
+    # --------------------------------------------------------
+    # Row 2
+    # --------------------------------------------------------
+
+    line2 = (
+        f"Mean Inside : "
+        f"{metrics['mean_inside']:.3f}"
+        f"      "
+        f"Mean Outside : "
+        f"{metrics['mean_outside']:.3f}"
+        f"      "
+        f"Inside / Outside : "
+        f"{metrics['mean_inside_outside_ratio']:.3f}"
+    )
+
+    cv2.putText(
+        panel,
+        line2,
+        (
+            30,
+            145,
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.82,
+        (
+            220,
+            220,
+            220,
+        ),
+        2,
+        cv2.LINE_AA,
+    )
+
+    # --------------------------------------------------------
+    # Row 3
+    # --------------------------------------------------------
+
+    line3 = (
+        f"Top 1%  P/R : "
+        f"{metrics['top1_precision']:.3f}"
+        f" / "
+        f"{metrics['top1_recall']:.3f}"
+        f"      "
+        f"Top 5%  P/R : "
+        f"{metrics['top5_precision']:.3f}"
+        f" / "
+        f"{metrics['top5_recall']:.3f}"
+    )
+
+    cv2.putText(
+        panel,
+        line3,
+        (
+            30,
+            190,
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.82,
+        (
+            220,
+            220,
+            220,
+        ),
+        2,
+        cv2.LINE_AA,
+    )
+
+    # --------------------------------------------------------
+    # Row 4
+    # --------------------------------------------------------
+
+    line4 = (
+        f"Top 10% P/R : "
+        f"{metrics['top10_precision']:.3f}"
+        f" / "
+        f"{metrics['top10_recall']:.3f}"
+        f"      "
+        f"Mask Pixel Ratio : "
+        f"{metrics['mask_pixel_ratio']:.4f}"
+        f"      "
+        f"Max In/Out Ratio : "
+        f"{metrics['max_inside_outside_ratio']:.3f}"
+    )
+
+    cv2.putText(
+        panel,
+        line4,
+        (
+            30,
+            235,
+        ),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.82,
+        (
+            220,
+            220,
+            220,
+        ),
+        2,
+        cv2.LINE_AA,
+    )
+
+    # ========================================================
+    # Final image
+    # ========================================================
+
+    result = np.vstack(
+        [
+            panel,
+            content,
+        ]
+    )
+
+    return result
