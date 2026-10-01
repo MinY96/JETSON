@@ -1,0 +1,89 @@
+source:
+  # 실제 파일은 실행 시 --source-video로 지정
+  split: "val"
+
+generation:
+  seed: 342
+
+  # Gate metadata가 2fps라면
+  # 현재 frame에서 가장 가까운 homography를 사용
+  max_metadata_gap_sec: 0.75
+
+events:
+
+  # ---------------------------------------------------------
+  # LEFT - 물방울
+  # ---------------------------------------------------------
+  - id: "left_droplet"
+    roi: "left"
+    defect_type: "droplet"
+
+    start_sec: 8.0
+    end_sec: 15.0
+
+    width_ratio_min: 0.08
+    width_ratio_max: 0.16
+
+    rotation_min: -30
+    rotation_max: 30
+
+    opacity_min: 0.70
+    opacity_max: 0.95
+
+    zone:
+      - 0.10
+      - 0.10
+      - 0.90
+      - 0.80
+
+
+  # ---------------------------------------------------------
+  # RIGHT - 지속 누수
+  # ---------------------------------------------------------
+  - id: "right_leak"
+    roi: "right"
+    defect_type: "leak"
+
+    start_sec: 22.0
+    end_sec: 32.0
+
+    width_ratio_min: 0.15
+    width_ratio_max: 0.28
+
+    rotation_min: -12
+    rotation_max: 12
+
+    opacity_min: 0.70
+    opacity_max: 0.95
+
+    zone:
+      - 0.10
+      - 0.05
+      - 0.90
+      - 0.50
+
+
+  # ---------------------------------------------------------
+  # LEFT - 물 튐
+  # ---------------------------------------------------------
+  - id: "left_splash"
+    roi: "left"
+    defect_type: "splash"
+
+    start_sec: 40.0
+    end_sec: 47.0
+
+    width_ratio_min: 0.18
+    width_ratio_max: 0.35
+
+    rotation_min: -30
+    rotation_max: 30
+
+    opacity_min: 0.65
+    opacity_max: 0.95
+
+    zone:
+      - 0.10
+      - 0.10
+      - 0.90
+      - 0.90
