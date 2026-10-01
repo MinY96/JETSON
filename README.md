@@ -1,485 +1,311 @@
-def make_overlay(
-    image_rgb: np.ndarray,
-    anomaly_map: np.ndarray,
-    gt_mask: np.ndarray,
-    *,
-    defect_type: str,
-    image_score: float,
-    metrics: dict[str, Any],
-) -> np.ndarray:
-
-    # ========================================================
-    # Display size
-    # ========================================================
-
-    original_height, original_width = (
-        image_rgb.shape[:2]
-    )
-
-    # 각 panel이 최소 800px width가 되도록 확대
-    # 동시에 최소 3배 확대
-    display_scale = max(
-        3.0,
-        800.0 / original_width,
-    )
-
-    display_width = int(
-        round(
-            original_width
-            * display_scale
-        )
-    )
-
-    display_height = int(
-        round(
-            original_height
-            * display_scale
-        )
-    )
-
-    # ========================================================
-    # Resize Original
-    # ========================================================
-
-    image_bgr = cv2.cvtColor(
-        image_rgb,
-        cv2.COLOR_RGB2BGR,
-    )
-
-    image_display = cv2.resize(
-        image_bgr,
-        (
-            display_width,
-            display_height,
-        ),
-        interpolation=cv2.INTER_CUBIC,
-    )
-
-    # ========================================================
-    # Resize anomaly map
-    # ========================================================
-
-    anomaly_display = cv2.resize(
-        anomaly_map.astype(
-            np.float32
-        ),
-        (
-            display_width,
-            display_height,
-        ),
-        interpolation=cv2.INTER_LINEAR,
-    )
-
-    normalized = normalize_map(
-        anomaly_display
-    )
-
-    heatmap = cv2.applyColorMap(
-        normalized,
-        cv2.COLORMAP_JET,
-    )
-
-    # ========================================================
-    # Heatmap Overlay
-    # ========================================================
-
-    overlay = cv2.addWeighted(
-        image_display,
-        0.55,
-        heatmap,
-        0.45,
-        0,
-    )
-
-    # ========================================================
-    # Resize GT mask
-    # ========================================================
-
-    mask_u8 = (
-        gt_mask.astype(
-            np.uint8
-        )
-        * 255
-    )
-
-    mask_display = cv2.resize(
-        mask_u8,
-        (
-            display_width,
-            display_height,
-        ),
-        interpolation=cv2.INTER_NEAREST,
-    )
-
-    gt_display = (
-        mask_display > 0
-    )
-
-    # ========================================================
-    # GT contour
-    # ========================================================
-
-    contours, _ = cv2.findContours(
-        mask_display,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE,
-    )
-
-    cv2.drawContours(
-        overlay,
-        contours,
-        -1,
-        (
-            255,
-            255,
-            255,
-        ),
-        4,
-        cv2.LINE_AA,
-    )
-
-    # ========================================================
-    # Peak position
-    # ========================================================
-
-    peak_x = int(
-        round(
-            metrics[
-                "peak_x"
-            ]
-            * display_scale
-        )
-    )
-
-    peak_y = int(
-        round(
-            metrics[
-                "peak_y"
-            ]
-            * display_scale
-        )
-    )
-
-    cv2.drawMarker(
-        overlay,
-        (
-            peak_x,
-            peak_y,
-        ),
-        (
-            0,
-            255,
-            255,
-        ),
-        markerType=(
-            cv2.MARKER_CROSS
-        ),
-        markerSize=30,
-        thickness=4,
-        line_type=cv2.LINE_AA,
-    )
-
-    # Peak 주변 원도 추가
-    cv2.circle(
-        overlay,
-        (
-            peak_x,
-            peak_y,
-        ),
-        16,
-        (
-            0,
-            255,
-            255,
-        ),
-        3,
-        cv2.LINE_AA,
-    )
-
-    # ========================================================
-    # GT Mask visualization
-    # ========================================================
-
-    mask_visual = cv2.cvtColor(
-        mask_display,
-        cv2.COLOR_GRAY2BGR,
-    )
-
-    # Mask contour를 한 번 더 표시
-    cv2.drawContours(
-        mask_visual,
-        contours,
-        -1,
-        (
-            0,
-            255,
-            255,
-        ),
-        4,
-        cv2.LINE_AA,
-    )
-
-    # ========================================================
-    # Individual image title bars
-    # ========================================================
-
-    title_height = 70
-
-    def add_title(
-        image: np.ndarray,
-        title: str,
-    ) -> np.ndarray:
-
-        title_bar = np.zeros(
-            (
-                title_height,
-                image.shape[1],
-                3,
-            ),
-            dtype=np.uint8,
-        )
-
-        cv2.putText(
-            title_bar,
-            title,
-            (
-                20,
-                47,
-            ),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.05,
-            (
-                235,
-                235,
-                235,
-            ),
-            2,
-            cv2.LINE_AA,
-        )
-
-        return np.vstack(
-            [
-                title_bar,
-                image,
-            ]
-        )
-
-    original_panel = add_title(
-        image_display,
-        "Synthetic NG",
-    )
-
-    anomaly_panel = add_title(
-        overlay,
-        "PatchCore Anomaly Map + GT",
-    )
-
-    mask_panel = add_title(
-        mask_visual,
-        "Synthetic GT Mask",
-    )
-
-    # ========================================================
-    # Horizontal content
-    # ========================================================
-
-    content = np.hstack(
-        [
-            original_panel,
-            anomaly_panel,
-            mask_panel,
-        ]
-    )
-
-    total_width = (
-        content.shape[1]
-    )
-
-    # ========================================================
-    # Large information panel
-    # ========================================================
-
-    panel_height = 260
-
-    panel = np.zeros(
-        (
-            panel_height,
-            total_width,
-            3,
-        ),
-        dtype=np.uint8,
-    )
-
-    # --------------------------------------------------------
-    # Main title
-    # --------------------------------------------------------
-
-    cv2.putText(
-        panel,
-        (
-            f"{defect_type.upper()} "
-            f"| PatchCore Localization Validation"
-        ),
-        (
-            30,
-            48,
-        ),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.20,
-        (
-            255,
-            255,
-            255,
-        ),
-        3,
-        cv2.LINE_AA,
-    )
-
-    # --------------------------------------------------------
-    # Row 1
-    # --------------------------------------------------------
-
-    line1 = (
-        f"Image Score : "
-        f"{image_score:.3f}"
-        f"      "
-        f"Peak Hit : "
-        f"{metrics['peak_hit']}"
-        f"      "
-        f"Peak : "
-        f"({metrics['peak_x']}, "
-        f"{metrics['peak_y']})"
-    )
-
-    cv2.putText(
-        panel,
-        line1,
-        (
-            30,
-            100,
-        ),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.90,
-        (
-            220,
-            220,
-            220,
-        ),
-        2,
-        cv2.LINE_AA,
-    )
-
-    # --------------------------------------------------------
-    # Row 2
-    # --------------------------------------------------------
-
-    line2 = (
-        f"Mean Inside : "
-        f"{metrics['mean_inside']:.3f}"
-        f"      "
-        f"Mean Outside : "
-        f"{metrics['mean_outside']:.3f}"
-        f"      "
-        f"Inside / Outside : "
-        f"{metrics['mean_inside_outside_ratio']:.3f}"
-    )
-
-    cv2.putText(
-        panel,
-        line2,
-        (
-            30,
-            145,
-        ),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.82,
-        (
-            220,
-            220,
-            220,
-        ),
-        2,
-        cv2.LINE_AA,
-    )
-
-    # --------------------------------------------------------
-    # Row 3
-    # --------------------------------------------------------
-
-    line3 = (
-        f"Top 1%  P/R : "
-        f"{metrics['top1_precision']:.3f}"
-        f" / "
-        f"{metrics['top1_recall']:.3f}"
-        f"      "
-        f"Top 5%  P/R : "
-        f"{metrics['top5_precision']:.3f}"
-        f" / "
-        f"{metrics['top5_recall']:.3f}"
-    )
-
-    cv2.putText(
-        panel,
-        line3,
-        (
-            30,
-            190,
-        ),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.82,
-        (
-            220,
-            220,
-            220,
-        ),
-        2,
-        cv2.LINE_AA,
-    )
-
-    # --------------------------------------------------------
-    # Row 4
-    # --------------------------------------------------------
-
-    line4 = (
-        f"Top 10% P/R : "
-        f"{metrics['top10_precision']:.3f}"
-        f" / "
-        f"{metrics['top10_recall']:.3f}"
-        f"      "
-        f"Mask Pixel Ratio : "
-        f"{metrics['mask_pixel_ratio']:.4f}"
-        f"      "
-        f"Max In/Out Ratio : "
-        f"{metrics['max_inside_outside_ratio']:.3f}"
-    )
-
-    cv2.putText(
-        panel,
-        line4,
-        (
-            30,
-            235,
-        ),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.82,
-        (
-            220,
-            220,
-            220,
-        ),
-        2,
-        cv2.LINE_AA,
-    )
-
-    # ========================================================
-    # Final image
-    # ========================================================
-
-    result = np.vstack(
-        [
-            panel,
-            content,
-        ]
-    )
-
-    return result
+{
+  "left": {
+    "roi": "left",
+    "device": "cpu",
+    "normal_count": 197,
+    "synthetic_count": 90,
+    "statistics": [
+      {
+        "defect_type": "droplet",
+        "count": 30,
+        "min": 18.899158477783203,
+        "p25": 26.099721908569336,
+        "p50": 27.970882415771484,
+        "p75": 29.710222721099854,
+        "p90": 30.653847312927248,
+        "p95": 31.762283706665034,
+        "p99": 33.14321029663086,
+        "max": 33.428218841552734,
+        "mean": 27.631123542785645,
+        "std": 3.2293853658703973
+      },
+      {
+        "defect_type": "leak",
+        "count": 30,
+        "min": 23.621967315673828,
+        "p25": 25.301732540130615,
+        "p50": 26.281500816345215,
+        "p75": 27.61376190185547,
+        "p90": 28.27284679412842,
+        "p95": 28.49092617034912,
+        "p99": 29.368837356567383,
+        "max": 29.670846939086914,
+        "mean": 26.419471104939777,
+        "std": 1.5385711550381265
+      },
+      {
+        "defect_type": "normal",
+        "count": 197,
+        "min": 14.310564041137695,
+        "p25": 14.85663890838623,
+        "p50": 15.100800514221191,
+        "p75": 15.44687557220459,
+        "p90": 15.871469497680666,
+        "p95": 16.06805419921875,
+        "p99": 18.32356620788574,
+        "max": 19.503868103027344,
+        "mean": 15.214607553433646,
+        "std": 0.6420327980898675
+      },
+      {
+        "defect_type": "splash",
+        "count": 30,
+        "min": 26.751049041748047,
+        "p25": 28.99045991897583,
+        "p50": 29.525484085083008,
+        "p75": 30.67844581604004,
+        "p90": 31.396047401428223,
+        "p95": 31.66783561706543,
+        "p99": 31.831939506530762,
+        "max": 31.887523651123047,
+        "mean": 29.704127756754556,
+        "std": 1.2887355927215784
+      }
+    ],
+    "separation": {
+      "normal_max": 19.503868103027344,
+      "synthetic_min": 18.899158477783203,
+      "separation_margin": -0.6047096252441406,
+      "perfect_separation": false
+    },
+    "threshold_candidates": [
+      {
+        "strategy": "best_balanced_accuracy",
+        "threshold": 18.761666297912598,
+        "tp": 90,
+        "tn": 196,
+        "fp": 1,
+        "fn": 0,
+        "accuracy": 0.9965156794425087,
+        "precision": 0.989010989010989,
+        "recall": 1.0,
+        "specificity": 0.9949238578680203,
+        "fpr": 0.005076142131979695,
+        "f1": 0.994475138121547,
+        "balanced_accuracy": 0.9974619289340101
+      },
+      {
+        "strategy": "max_fpr_00pct",
+        "threshold": 20.617661476135254,
+        "tp": 89,
+        "tn": 197,
+        "fp": 0,
+        "fn": 1,
+        "accuracy": 0.9965156794425087,
+        "precision": 1.0,
+        "recall": 0.9888888888888889,
+        "specificity": 1.0,
+        "fpr": 0.0,
+        "f1": 0.9944134078212291,
+        "balanced_accuracy": 0.9944444444444445
+      },
+      {
+        "strategy": "normal_p95",
+        "threshold": 16.06805419921875,
+        "tp": 90,
+        "tn": 187,
+        "fp": 10,
+        "fn": 0,
+        "accuracy": 0.9651567944250871,
+        "precision": 0.9,
+        "recall": 1.0,
+        "specificity": 0.949238578680203,
+        "fpr": 0.050761421319796954,
+        "f1": 0.9473684210526316,
+        "balanced_accuracy": 0.9746192893401016
+      },
+      {
+        "strategy": "normal_p99",
+        "threshold": 18.32356620788574,
+        "tp": 90,
+        "tn": 195,
+        "fp": 2,
+        "fn": 0,
+        "accuracy": 0.9930313588850174,
+        "precision": 0.9782608695652174,
+        "recall": 1.0,
+        "specificity": 0.9898477157360406,
+        "fpr": 0.01015228426395939,
+        "f1": 0.989010989010989,
+        "balanced_accuracy": 0.9949238578680203
+      },
+      {
+        "strategy": "normal_max_plus",
+        "threshold": 19.503868103027347,
+        "tp": 89,
+        "tn": 197,
+        "fp": 0,
+        "fn": 1,
+        "accuracy": 0.9965156794425087,
+        "precision": 1.0,
+        "recall": 0.9888888888888889,
+        "specificity": 1.0,
+        "fpr": 0.0,
+        "f1": 0.9944134078212291,
+        "balanced_accuracy": 0.9944444444444445
+      }
+    ]
+  },
+  "right": {
+    "roi": "right",
+    "device": "cpu",
+    "normal_count": 186,
+    "synthetic_count": 90,
+    "statistics": [
+      {
+        "defect_type": "droplet",
+        "count": 30,
+        "min": 15.497858047485352,
+        "p25": 20.853309631347656,
+        "p50": 23.665185928344727,
+        "p75": 26.262933254241943,
+        "p90": 26.77267723083496,
+        "p95": 27.208782482147214,
+        "p99": 27.646406364440917,
+        "max": 27.684246063232422,
+        "mean": 23.168767166137695,
+        "std": 3.4957342831957865
+      },
+      {
+        "defect_type": "leak",
+        "count": 30,
+        "min": 20.545900344848633,
+        "p25": 22.24571990966797,
+        "p50": 23.333160400390625,
+        "p75": 25.087998390197754,
+        "p90": 26.028982162475586,
+        "p95": 26.34942588806152,
+        "p99": 28.09835439682007,
+        "max": 28.712547302246094,
+        "mean": 23.713625780741374,
+        "std": 1.8726988266525317
+      },
+      {
+        "defect_type": "normal",
+        "count": 186,
+        "min": 12.857562065124512,
+        "p25": 13.39417028427124,
+        "p50": 13.630571365356445,
+        "p75": 13.926315069198607,
+        "p90": 14.231890678405762,
+        "p95": 14.472977638244627,
+        "p99": 15.39129104614258,
+        "max": 18.953523635864254,
+        "mean": 13.707785965293967,
+        "std": 0.606798926675021
+      },
+      {
+        "defect_type": "splash",
+        "count": 30,
+        "min": 21.045391082763672,
+        "p25": 25.098025798797607,
+        "p50": 28.05699062347412,
+        "p75": 29.491217613220215,
+        "p90": 31.02917823791504,
+        "p95": 31.776998519897457,
+        "p99": 32.326452102661136,
+        "max": 32.399715423583984,
+        "mean": 27.370559628804525,
+        "std": 3.259214656723454
+      }
+    ],
+    "separation": {
+      "normal_max": 18.953523635864254,
+      "synthetic_min": 15.497858047485352,
+      "separation_margin": -3.4556655883789027,
+      "perfect_separation": false
+    },
+    "threshold_candidates": [
+      {
+        "strategy": "best_balanced_accuracy",
+        "threshold": 15.408773422241211,
+        "tp": 90,
+        "tn": 184,
+        "fp": 2,
+        "fn": 0,
+        "accuracy": 0.9927536231884058,
+        "precision": 0.9782608695652174,
+        "recall": 1.0,
+        "specificity": 0.989247311827957,
+        "fpr": 0.010752688172043012,
+        "f1": 0.989010989010989,
+        "balanced_accuracy": 0.9946236559139785
+      },
+      {
+        "strategy": "max_fpr_00pct",
+        "threshold": 19.330520629882812,
+        "tp": 85,
+        "tn": 186,
+        "fp": 0,
+        "fn": 5,
+        "accuracy": 0.9818840579710145,
+        "precision": 1.0,
+        "recall": 0.9444444444444444,
+        "specificity": 1.0,
+        "fpr": 0.0,
+        "f1": 0.9714285714285714,
+        "balanced_accuracy": 0.9722222222222222
+      },
+      {
+        "strategy": "max_fpr_01pct",
+        "threshold": 16.891398429870605,
+        "tp": 88,
+        "tn": 185,
+        "fp": 1,
+        "fn": 2,
+        "accuracy": 0.9891304347826086,
+        "precision": 0.9887640449438202,
+        "recall": 0.9777777777777777,
+        "specificity": 0.9946236559139785,
+        "fpr": 0.005376344086021506,
+        "f1": 0.9832402234636872,
+        "balanced_accuracy": 0.9862007168458782
+      },
+      {
+        "strategy": "normal_p95",
+        "threshold": 14.472977638244627,
+        "tp": 90,
+        "tn": 176,
+        "fp": 10,
+        "fn": 0,
+        "accuracy": 0.9637681159420289,
+        "precision": 0.9,
+        "recall": 1.0,
+        "specificity": 0.946236559139785,
+        "fpr": 0.053763440860215055,
+        "f1": 0.9473684210526316,
+        "balanced_accuracy": 0.9731182795698925
+      },
+      {
+        "strategy": "normal_p99",
+        "threshold": 15.39129104614258,
+        "tp": 90,
+        "tn": 184,
+        "fp": 2,
+        "fn": 0,
+        "accuracy": 0.9927536231884058,
+        "precision": 0.9782608695652174,
+        "recall": 1.0,
+        "specificity": 0.989247311827957,
+        "fpr": 0.010752688172043012,
+        "f1": 0.989010989010989,
+        "balanced_accuracy": 0.9946236559139785
+      },
+      {
+        "strategy": "normal_max_plus",
+        "threshold": 18.953523635864258,
+        "tp": 85,
+        "tn": 186,
+        "fp": 0,
+        "fn": 5,
+        "accuracy": 0.9818840579710145,
+        "precision": 1.0,
+        "recall": 0.9444444444444444,
+        "specificity": 1.0,
+        "fpr": 0.0,
+        "f1": 0.9714285714285714,
+        "balanced_accuracy": 0.9722222222222222
+      }
+    ]
+  }
+}
