@@ -1,0 +1,78 @@
+generation:
+  source_split: "val"
+  samples_per_type: 30
+  seed: 242
+
+  defect_types:
+    - leak
+    - splash
+
+assets:
+  leak:
+    directory: "data/synthetic_assets/water/leak"
+
+  splash:
+    directory: "data/synthetic_assets/water/splash"
+
+
+# anomaly ROI 내부 normalized coordinate
+#
+# [x1, y1, x2, y2]
+#
+# 0~1 사이 값
+#
+# 현재는 전체 영역에 가깝게 허용하고,
+# 추후 실제 호스 연결부 위치로 좁히면 됨.
+placement:
+
+  left:
+    leak:
+      zones:
+        - [0.05, 0.05, 0.95, 0.90]
+
+    splash:
+      zones:
+        - [0.05, 0.05, 0.95, 0.95]
+
+  right:
+    leak:
+      zones:
+        - [0.05, 0.05, 0.95, 0.90]
+
+    splash:
+      zones:
+        - [0.05, 0.05, 0.95, 0.95]
+
+
+transform:
+
+  leak:
+    width_ratio_min: 0.12
+    width_ratio_max: 0.30
+
+    rotation_min: -15
+    rotation_max: 15
+
+    opacity_min: 0.65
+    opacity_max: 0.95
+
+    blur_sigma_min: 0.0
+    blur_sigma_max: 0.7
+
+  splash:
+    width_ratio_min: 0.15
+    width_ratio_max: 0.40
+
+    rotation_min: -35
+    rotation_max: 35
+
+    opacity_min: 0.55
+    opacity_max: 0.90
+
+    blur_sigma_min: 0.0
+    blur_sigma_max: 0.8
+
+
+output:
+  save_aligned: true
+  save_mask: true
