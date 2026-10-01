@@ -1,0 +1,82 @@
+runtime:
+  target_fps: 2.0
+  device: "cpu"
+
+  # Homography alignment 후 anomaly ROI 안에서
+  # 실제 source pixel이 차지해야 하는 최소 비율
+  min_valid_ratio: 0.95
+
+  # annotated.mp4 오른쪽 정보 panel
+  panel_width: 760
+
+  # Synthetic GT event 종료 후 alarm까지 허용할 시간
+  event_grace_sec: 2.0
+
+
+paths:
+  roi_config: "config/roi.yaml"
+  normal_roi_config: "config/normal_roi.yaml"
+  patchcore_config: "config/patchcore.yaml"
+
+  templates:
+    left: "data/templates/left.png"
+    right: "data/templates/right.png"
+
+
+matching:
+  algorithm: "sift"
+  matcher: "flann"
+
+  max_features: 3000
+  ratio_threshold: 0.7
+
+  # Gate 수집 때 사용한 값
+  min_matches: 4
+  max_matches: 500
+
+  reprojection_threshold: 5.0
+
+
+gate:
+  left:
+    # null이면 config/roi.yaml에서 자동 탐색
+    search_roi: null
+
+    min_good_matches: null
+    min_inliers: 6
+    min_inlier_ratio: null
+
+    min_area_ratio: 0.8
+    max_area_ratio: 1.2
+
+    max_abs_rotation: 5.0
+
+  right:
+    search_roi: null
+
+    min_good_matches: null
+    min_inliers: 20
+    min_inlier_ratio: null
+
+    min_area_ratio: 0.8
+    max_area_ratio: 1.2
+
+    max_abs_rotation: 10.0
+
+
+patchcore:
+  # 현재는 영상 Pipeline 검증용 임시 threshold
+  left:
+    threshold: 19.5039
+
+  right:
+    threshold: 18.9535
+
+
+temporal:
+  window_size: 5
+  required_ng: 3
+
+  # Gate가 연속해서 이 횟수만큼 실패하면
+  # 이전 history 제거
+  reset_after_gate_miss: 3
