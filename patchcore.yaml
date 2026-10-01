@@ -1,0 +1,29 @@
+model:
+  input_size: 256
+  pool_kernel: 3
+
+  candidate_pool_size: 12000
+
+  # candidate pool의 10%
+  coreset_ratio: 0.10
+
+  # 최종 memory bank 최대 patch 개수
+  max_memory_patches: 1200
+
+  projection_dim: 64
+  query_chunk_size: 2048
+
+  batch_size: 4
+  num_workers: 0
+  seed: 42
+
+rois:
+  left:
+    train_dir: "data/normal_roi/train/left/images"
+    val_dir: "data/normal_roi/val/left/images"
+    model_dir: "models/patchcore_left"
+
+  right:
+    train_dir: "data/normal_roi/train/right/images"
+    val_dir: "data/normal_roi/val/right/images"
+    model_dir: "models/patchcore_right"
