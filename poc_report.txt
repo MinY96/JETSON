@@ -1,0 +1,791 @@
+CCTV 기반 호스 누수 이상탐지 POC
+
+경영진 요약
+
+1. 목적
+
+Photo 장비 내 호스 연결부를 CCTV로 모니터링하여 물방울, 지속 누수, 물 튐 및 분사와 같은 이상을 자동 검출하는 기술의 적용 가능성을 검증하였다.
+
+실제 현장에서는 호스 위치가 장비 진동과 카메라 시야 변화로 변하고, 실제 누수 NG 데이터가 부족하므로 단순 고정 ROI 및 지도학습 분류 방식은 적용에 한계가 있었다. 이에 따라 검사 가능 상태를 먼저 판정하고, 영상 위치를 보정한 뒤 정상 데이터만으로 이상을 검출하는 구조를 적용하였다.
+
+2. 주요 결과
+
+최종 POC는 다음 구조로 구현하였다.
+
+CCTV
+ ↓
+Feature Matching 기반 검사 가능 상태 판정
+ ↓
+Homography 기반 영상 정렬
+ ↓
+PatchCore 정상 데이터 기반 이상탐지
+ ↓
+Threshold 및 Temporal Filter
+ ↓
+최종 Alarm
+
+주요 검증 결과는 다음과 같다.
+
+* 검사 가능 상태 판정에서 LEFT와 RIGHT 모두 False Positive 0건 확인
+* LEFT Gate: TP 197, TN 160, FP 0, FN 3
+* RIGHT Gate: TP 186, TN 172, FP 0, FN 2
+* Realistic Synthetic 검증에서:
+    * LEFT: Synthetic NG Recall 98.9%, Normal FP 0건
+    * RIGHT: Synthetic NG Recall 94.4%, Normal FP 0건
+* leak과 splash는 정상 영상과 명확하게 분리
+* droplet은 대부분 검출되었으나 매우 작은 물방울 일부는 정상 score와 중첩
+* Anomaly map의 실제 결함 영역 localization 비율:
+    * LEFT 91.1%
+    * RIGHT 88.9%
+
+따라서 본 POC는 CCTV 기반 호스 누수 자동검출의 기술적 가능성을 확인하였다.
+
+3. 주요 한계
+
+이번 결과는 실제 누수 NG가 아닌 Synthetic NG를 중심으로 검증한 POC 결과이다. 따라서 양산 적용 전 다음 사항에 대한 추가 검증이 필요하다.
+
+* 실제 누수 NG 데이터 부족
+* 작은 초기 물방울과 미세 누수의 검출 성능 한계
+* Synthetic 이미지와 실제 누수 영상 간 차이
+* 장기간 CCTV 영상에서 조명, 오염, 카메라 흔들림 변화에 대한 안정성 미검증
+* Threshold와 Temporal Filter 조건이 실제 운영 환경에 맞게 최적화되지 않음
+* Thin stream과 같은 얇은 이상 형태는 anomaly map localization 성능이 상대적으로 낮음
+
+4. 다음 단계
+
+1. 실제 장비에서 장기간 CCTV 정상 영상을 수집하여 정상 score 분포를 확대 검증한다.
+2. 가능한 범위에서 실제 누수, 물방울, 물 튐 데이터를 확보하여 Synthetic NG와 비교한다.
+3. 작은 물방울과 초기 누수에 대한 데이터 및 검출 기준을 보강한다.
+4. 실제 운영 조건에서 Threshold와 3 / 5 Temporal Filter 조건을 최적화한다.
+5. 조명 변화, 카메라 흔들림, 렌즈 오염, 장비 상태 변화에 대한 강건성을 검증한다.
+6. Alarm 발생 이력, 영상 저장, 현장 확인 결과를 연계하여 운영용 평가 체계를 구축한다.
+7. 실제 Test 환경에서 Precision, Recall, False Alarm 빈도, 검출 지연시간을 기준으로 양산 적용 여부를 판단한다.
+
+5. 경영진 판단 포인트
+
+본 POC는 현재 데이터 조건에서 기술 구현 가능성과 주요 누수 유형에 대한 검출 가능성을 확인했다. 특히 지속 누수와 강한 물 분사는 정상 영상과 비교적 명확하게 구분되었다.
+
+다만 실제 운영 성능을 확정하기 위해서는 실제 NG 데이터와 장기간 현장 영상 확보가 필요하다. 따라서 다음 단계는 즉시 양산 적용보다는 실제 장비 대상의 파일럿 운영과 데이터 확보를 통해 검출률 및 False Alarm을 검증하는 것이 적절하다.
+
+⸻
+
+1. 초기 구상
+
+본 과제의 목적은 Photo 장비 내 호스 연결부를 CCTV로 모니터링하여 다음과 같은 누수 이상을 자동 검출하는 것이다.
+
+* 호스 또는 연결부의 물방울 발생
+* 연결부의 지속적인 누수
+* 누수 확대에 따른 물 튐 또는 분사
+
+초기에는 고정 ROI를 설정하고 해당 영역을 이상탐지 모델에 입력하는 구조를 검토하였다.
+
+CCTV
+ ↓
+고정 ROI Crop
+ ↓
+이상탐지 모델
+ ↓
+Normal / Anomaly 판정
+
+그러나 실제 CCTV 데이터를 분석한 결과 다음과 같은 한계가 확인되었다.
+
+* 장비 동작, 진동, 카메라 시야 변화로 호스 위치와 각도가 변함
+* 일부 프레임에서는 호스가 기준 위치에 없거나 가려짐
+* 실제 누수 NG 데이터가 부족하여 지도학습 기반 분류 모델 적용이 어려움
+
+이에 따라 검사 가능 상태를 먼저 판정하고, 영상 위치를 기준 좌표계로 정렬한 후 정상 데이터 기반 이상탐지를 수행하는 구조로 변경하였다.
+
+⸻
+
+2. 수정된 프로세스
+
+최종 POC 프로세스는 다음과 같다.
+
+CCTV 영상
+    ↓
+Search ROI
+    ↓
+Template / Feature Matching
+    ↓
+검사 가능 상태 Gate 판정
+    ↓
+Homography 기반 Alignment
+    ↓
+Canonical Anomaly ROI
+    ↓
+PatchCore 이상탐지
+    ↓
+Frame-level NG 판정
+    ↓
+Temporal Filter
+    ↓
+최종 Alarm
+
+2.1 Gate
+
+현재 프레임이 검사 가능한 상태인지 판정한다.
+
+현재 Frame
+   ↓
+기준 Template과 Matching
+   ↓
+Homography 계산
+   ↓
+Matching 품질 평가
+   ↓
+Gate PASS / FAIL
+
+Gate가 FAIL인 프레임은 PatchCore 판정에서 제외한다.
+
+2.2 Alignment
+
+Gate를 통과한 프레임은 Homography의 역변환을 이용해 Template 기준 좌표계로 정렬한다.
+
+현재 영상 좌표
+        ↓ H^-1
+Template 기준 좌표
+        ↓
+고정 Anomaly ROI
+
+이를 통해 호스의 위치 및 각도 변화가 이상탐지 결과에 미치는 영향을 줄인다.
+
+2.3 Anomaly Detection
+
+정렬된 ROI를 PatchCore에 입력하여 정상 데이터와의 feature 거리를 계산한다.
+
+Aligned ROI
+   ↓
+PatchCore
+   ↓
+Anomaly Score
+   ↓
+Threshold
+   ↓
+OK / NG Candidate
+
+단일 프레임의 NG는 즉시 Alarm으로 사용하지 않고 시간축 필터를 적용한다.
+
+최근 5회 판정
+OK
+NG
+NG
+NG
+OK
+→ NG 3 / 5
+→ 최종 ALARM
+
+⸻
+
+3. 사용 기법 및 모델
+
+3.1 Feature-based Matching
+
+검사 대상의 위치 검출에는 특징점 기반 Matching을 적용하였다.
+
+Template
+   ↓
+Feature Detection
+   ↓
+Descriptor Extraction
+                         Current Frame
+                              ↓
+                        Feature Detection
+                              ↓
+                      Descriptor Extraction
+        ↓ Descriptor Matching ↓
+              Good Matches
+                   ↓
+                 RANSAC
+                   ↓
+               Homography
+
+특징점 매칭 후 Lowe Ratio Test로 신뢰도가 낮은 매칭을 제거하고, RANSAC 기반 Homography로 이상 매칭의 영향을 줄였다. 이 방식은 OpenCV의 planar object localization 절차와 동일한 구조이다. (OpenCV Documentation)
+
+Feature Detector
+
+SIFT 또는 ORB 기반으로 특징점을 검출하고 descriptor를 생성하였다.
+
+Matcher
+
+FLANN 또는 BF Matcher를 사용하여 Template과 현재 프레임의 descriptor를 비교하였다.
+
+Best match distance
+------------------- < Ratio threshold
+Second match distance
+
+조건을 만족하는 매칭만 Good Match로 사용하였다.
+
+RANSAC Homography
+
+Good Match 중 잘못된 대응점을 제거하고 Homography를 계산하기 위해 RANSAC을 적용하였다.
+
+⸻
+
+3.2 Gate 판정 로직
+
+Homography 계산 성공 여부만으로 검사 가능 상태를 판단하지 않고 다음 항목을 함께 평가하였다.
+
+Good Matches
+Inliers
+Inlier Ratio
+Area Ratio
+Rotation
+Homography 계산 상태
+
+판정 흐름은 다음과 같다.
+
+Matching
+ ↓
+Homography 성공?
+ ↓ YES
+Inlier 조건 만족?
+ ↓ YES
+Projected Area 정상?
+ ↓ YES
+Rotation 정상?
+ ↓ YES
+Gate PASS
+
+LEFT와 RIGHT는 영상 구조가 달라 별도의 threshold를 적용하였다.
+
+LEFT
+
+min_inliers       : 6
+area_ratio        : 0.8 ~ 1.2
+abs(rotation)     : ≤ 5°
+
+Validation 결과:
+
+TP = 197
+TN = 160
+FP = 0
+FN = 3
+
+FN 3건은 모두 localization 품질이 낮은 사례였다.
+
+RIGHT
+
+min_inliers       : 20
+area_ratio        : 0.8 ~ 1.2
+abs(rotation)     : ≤ 10°
+
+Validation 결과:
+
+TP = 186
+TN = 172
+FP = 0
+FN = 2
+
+FN 2건 역시 Homography 또는 localization이 불안정한 사례였다.
+
+⸻
+
+3.3 Homography 기반 Alignment
+
+Homography는 Template 좌표에서 현재 영상 좌표로의 변환을 나타낸다.
+
+Template coordinate
+       ↓ H
+Current CCTV coordinate
+
+PatchCore 입력을 기준 좌표계로 변환하기 위해 역행렬을 사용하였다.
+
+Current CCTV coordinate
+       ↓ H^-1
+Template coordinate
+
+이를 통해 호스 위치가 달라지는 영상도 동일한 Canonical ROI에서 비교할 수 있다.
+
+⸻
+
+3.4 이상탐지 모델: PatchCore
+
+실제 누수 NG 데이터가 부족하므로 정상 데이터만으로 학습 가능한 PatchCore를 적용하였다.
+
+PatchCore는 정상 이미지에서 CNN feature를 추출하고, 대표 patch feature를 memory bank에 저장한다. 추론 시 입력 이미지의 patch와 memory bank 간 거리를 계산하여 anomaly score와 anomaly map을 생성한다. (arXiv)
+
+처리 구조
+
+Normal Images
+      ↓
+CNN Backbone
+      ↓
+Local Patch Features
+      ↓
+Representative Coreset
+      ↓
+Memory Bank
+
+추론 과정은 다음과 같다.
+
+Test Image
+    ↓
+CNN Features
+    ↓
+Patch Features
+    ↓
+Normal Memory Bank와 거리 계산
+    ↓
+Anomaly Map
+    ↓
+Image Score
+
+Backbone
+
+WideResNet50-2
+
+ImageNet pretrained feature를 사용하였다.
+
+Feature Layer
+
+layer2
+layer3
+
+두 계층의 feature를 동일한 spatial resolution으로 조정한 후 결합하였다.
+
+layer2 feature
+        +
+interpolated layer3
+        ↓
+Patch Embedding
+
+최종 embedding dimension은 1,536이다.
+
+⸻
+
+3.5 Memory Bank 구성
+
+전체 정상 patch를 저장하면 CPU 환경에서 메모리와 추론 비용이 증가하므로 Coreset을 사용하였다.
+
+전체 Normal Patch
+      ↓
+Candidate Sampling
+      ↓
+6,000 patches
+      ↓
+Approximate Greedy Coreset
+      ↓
+600 patches
+      ↓
+Memory Bank
+
+LEFT
+
+Normal images        580
+Total patch seen     593,920
+Candidate patches      6,000
+Memory patches           600
+Embedding dim           1,536
+
+RIGHT
+
+Normal images        549
+Total patch seen     562,176
+Candidate patches      6,000
+Memory patches           600
+
+CPU 환경에서 ROI당 약 1분 내 학습이 가능했다.
+
+⸻
+
+3.6 PatchCore 판정 방식
+
+각 입력 patch와 가장 가까운 정상 memory feature 간 거리를 계산한다.
+
+Test Patch
+   ↓
+Nearest Normal Patch
+   ↓
+Distance
+
+거리가 작으면 정상 feature와 유사한 것으로 판단하고, 거리가 크면 이상 가능성이 높은 것으로 판단한다.
+
+distance ↓
+→ Normal
+distance ↑
+→ Anomaly
+
+Patch별 거리를 spatial map으로 변환하여 anomaly map을 생성하고, 높은 anomaly score를 image-level score로 사용하였다.
+
+⸻
+
+3.7 Synthetic NG 데이터
+
+Synthetic NG는 PatchCore 학습에 사용하지 않고 검증에만 사용하였다.
+
+PatchCore Train
+    ↓
+Real Normal only
+Synthetic NG
+    ↓
+Validation / Threshold / Localization Test only
+
+이를 통해 Synthetic 이미지의 특징이 모델에 학습되는 것을 방지하였다.
+
+⸻
+
+3.8 Synthetic NG 생성
+
+Easy Synthetic
+
+초기 검증에서는 다음 형태를 생성하였다.
+
+droplet
+wet_spot
+thin_stream
+
+목적은 물 형태의 변화가 anomaly score에 반영되는지 확인하는 것이었다.
+
+Medium Synthetic
+
+효과의 크기와 색상 차이를 줄여 난이도를 높였다. 특히 wet spot은 정상 영상과의 차이가 작아 검출이 어려웠다.
+
+이 결과, 단순 색상 변화보다 물방울과 물줄기처럼 구조적 변화가 있는 이상 정의가 적합한 것으로 판단하였다.
+
+Realistic Asset Synthetic
+
+실제 물 형태에 가까운 투명 PNG asset을 CCTV 영상에 합성하였다.
+
+droplet
+leak
+splash
+
+각 asset에는 다음 augmentation을 적용하였다.
+
+Asset 선택
+ ↓
+투명 영역 crop
+ ↓
+Scale 변화
+ ↓
+Rotation
+ ↓
+Flip
+ ↓
+Opacity 변화
+ ↓
+Blur
+ ↓
+Random Placement
+ ↓
+Alpha Blending
+
+⸻
+
+3.9 영상 최종 판정 프로세스
+
+Video Frame
+     ↓
+Target FPS Sampling
+     ↓
+LEFT / RIGHT 각각 처리
+     ↓
+Gate Matching
+     ↓
+Gate PASS?
+ ┌───────┴────────┐
+NO               YES
+↓                  ↓
+Skip           Alignment
+                   ↓
+               Anomaly ROI
+                   ↓
+                PatchCore
+                   ↓
+              Anomaly Score
+                   ↓
+                Threshold
+                   ↓
+               Raw OK / NG
+                   ↓
+             Temporal Filter
+                   ↓
+               Final Alarm
+
+POC에서는 약 2 FPS로 추론하였다.
+
+Temporal Filter
+
+window_size = 5
+required_ng = 3
+
+최근 5회 중 3회 이상 NG이면 최종 Alarm으로 판정한다.
+
+Gate가 일정 횟수 이상 연속 실패하면 temporal history를 초기화하여, 검사 대상이 다시 나타났을 때 이전 NG 상태가 유지되지 않도록 하였다.
+
+⸻
+
+4. POC 결과
+
+4.1 Gate 검증
+
+LEFT
+
+Visible           200 수준
+Not Visible       160 수준
+TP                 197
+TN                 160
+FP                   0
+FN                   3
+
+RIGHT
+
+TP                 186
+TN                 172
+FP                   0
+FN                   2
+
+LEFT와 RIGHT 모두 False Positive가 발생하지 않았다. FN은 localization 또는 Homography 품질이 낮은 사례였다.
+
+⸻
+
+4.2 PatchCore 정상 분포
+
+LEFT Validation Normal
+
+count     197
+mean      15.21
+p50       15.10
+p95       16.07
+p99       18.32
+max       19.50
+
+RIGHT Validation Normal
+
+count     186
+mean      13.71
+p50       13.63
+p95       14.47
+p99       15.39
+max       18.95
+
+Train과 Validation의 score 분포가 유사하여 정상 데이터에 대한 과적합이나 분포 차이가 크지 않음을 확인하였다.
+
+⸻
+
+4.3 Realistic Synthetic NG 결과
+
+LEFT
+
+              Min      Median     Mean
+Normal       14.31      15.10     15.21
+Droplet      18.90      27.97     27.63
+Leak         23.62      26.28     26.42
+Splash       26.75      29.53     29.70
+
+Normal max는 19.50이었다.
+
+Leak과 Splash는 정상 영역과 명확히 분리되었다. Droplet은 가장 작은 사례 1건이 Normal max와 일부 겹쳤다.
+
+Normal max를 threshold로 사용한 결과:
+
+Synthetic NG      90
+Detected          89
+Recall          98.9 %
+Normal FP          0
+
+⸻
+
+4.4 RIGHT 결과
+
+              Min      Median     Mean
+Normal       12.86      13.63     13.71
+Droplet      15.50      23.67     23.17
+Leak         20.55      23.33     23.71
+Splash       21.05      28.06     27.37
+
+Normal max는 18.95였다.
+
+Leak과 Splash는 정상과 명확히 분리되었으나, 일부 작은 Droplet은 정상 score 영역과 겹쳤다.
+
+Normal max를 threshold로 사용한 결과:
+
+Synthetic NG      90
+Detected          85
+Recall          94.4 %
+Normal FP          0
+
+Normal p99 수준인 약 15.39를 threshold로 사용하면 다음과 같은 trade-off가 발생하였다.
+
+Synthetic Recall  100 %
+Normal FP           2 / 186
+
+⸻
+
+4.5 Anomaly Map Localization
+
+Easy Synthetic에서 anomaly map의 peak가 실제 Synthetic mask 내부에 위치한 비율은 다음과 같았다.
+
+LEFT     91.1 %
+RIGHT    88.9 %
+
+Droplet과 wet 형태는 비교적 높은 localization 성능을 보였다. 반면 thin stream은 feature grid와 receptive field의 영향으로 peak localization 성능이 낮았다.
+
+Anomaly 영역을 상위 5~10%로 확장하면 대부분 실제 결함 위치를 포함하였다. 이를 통해 PatchCore가 영상 전체 변화가 아니라 누수 영역의 feature 변화를 반영하고 있음을 확인하였다.
+
+⸻
+
+4.6 Synthetic Anomaly Video
+
+정상 Validation CCTV 영상을 기반으로 Synthetic anomaly test video를 생성하였다.
+
+10 sec
+  ↓
+Droplet 발생
+  ↓
+물방울 크기 증가
+  ↓
+Leak 발생
+  ↓
+누수 증가
+  ↓
+Splash 발생
+  ↓
+35 sec
+
+이상 상태는 다음 순서로 증가하도록 구성하였다.
+
+Normal
+  ↓
+Droplet
+  ↓
+Leak
+  ↓
+Splash
+
+Synthetic asset은 Template 좌표에서 생성한 후 Homography로 CCTV 좌표계에 투영하였다. 이를 통해 호스 위치가 변해도 누수 위치가 호스와 함께 이동하도록 구성하였다.
+
+⸻
+
+4.7 End-to-End 영상 추론
+
+전체 영상 추론 파이프라인은 다음과 같다.
+
+Gate
+→ Alignment
+→ PatchCore
+→ Threshold
+→ Temporal Filter
+→ Alarm
+
+추론 결과는 다음 파일로 저장하였다.
+
+result.csv
+summary.json
+annotated.mp4
+event_results.csv
+
+annotated.mp4에는 다음 정보를 표시하였다.
+
+LEFT / RIGHT Search ROI
+Homography Polygon
+Gate PASS / FAIL
+PatchCore Score
+Threshold
+Raw OK / NG
+Temporal History
+Final Alarm
+Aligned ROI
+Anomaly Heatmap
+
+Synthetic anomaly video에는 Ground Truth event를 함께 표시하여 실제 이상 발생 시점과 시스템 판정 결과를 비교할 수 있도록 하였다.
+
+GT: RIGHT LEAK
+PRED: ALARM
+
+⸻
+
+5. POC 종합 결과
+
+검사 가능 상태 판별
+
+Feature Matching과 Homography 기반 Gate를 이용하여 검사 대상이 정상 위치에 있는 프레임과 검사 불가 프레임을 구분하였다. Validation 데이터에서 LEFT와 RIGHT 모두 False Positive가 발생하지 않았다.
+
+위치 변화 대응
+
+Homography Alignment를 적용하여 호스의 위치 및 각도 변화 영향을 줄이고 동일한 Canonical ROI를 PatchCore에 입력하였다.
+
+정상 데이터 기반 모델 구축
+
+실제 누수 NG 데이터가 부족한 환경에서 정상 영상만으로 PatchCore 모델을 구축하였다.
+
+누수 이상 검출 가능성
+
+Realistic Synthetic 검증 결과는 다음과 같다.
+
+Leak         → 정상과 명확하게 분리
+Splash       → 정상과 명확하게 분리
+Droplet      → 대부분 검출 가능
+Tiny droplet → 일부 정상과 score overlap
+
+지속 누수와 강한 물 분사는 높은 검출 가능성을 보였으며, 작은 초기 물방울은 주요 개선 대상으로 확인되었다.
+
+False Alarm 제어
+
+Frame-level threshold와 Temporal Filter를 결합하여 일시적인 score 상승이 즉시 Alarm으로 이어지지 않도록 구성하였다.
+
+PatchCore NG
+   ↓
+NG Candidate
+   ↓
+3 / 5 Temporal Rule
+   ↓
+Final Alarm
+
+⸻
+
+6. 최종 POC 구조
+
+                 CCTV
+                   │
+                   ▼
+              Search ROI
+                   │
+                   ▼
+          Feature Matching
+                   │
+                   ▼
+        Homography / Gate
+             │          │
+           FAIL        PASS
+             │          │
+            Skip        ▼
+                    Alignment
+                        │
+                        ▼
+                   Anomaly ROI
+                        │
+                        ▼
+                     PatchCore
+                        │
+                        ▼
+                   Anomaly Map
+                        +
+                   Image Score
+                        │
+                        ▼
+                    Threshold
+                        │
+                        ▼
+                    Raw NG
+                        │
+                        ▼
+                Temporal Filter
+                        │
+                        ▼
+                  Final Alarm
+
+⸻
+
+7. POC 결론
+
+본 POC를 통해 다음 사항을 확인하였다.
+
+1. Feature Matching과 Homography를 이용하여 검사 가능 상태를 선별할 수 있다.
+2. Homography Alignment를 통해 검사 대상의 위치 변화 영향을 줄일 수 있다.
+3. 실제 NG 데이터가 부족한 환경에서도 정상 영상만으로 PatchCore 기반 이상탐지 모델을 구축할 수 있다.
+4. Synthetic NG 검증에서 leak과 splash는 정상 영상과 명확히 분리되었다.
+5. 작은 droplet은 일부 정상 영상과 score overlap이 발생하여 추가 개선이 필요하다.
+6. Temporal Filter를 적용하여 False Alarm을 제어할 수 있는 구조를 확보하였다.
+
+따라서 본 POC는 CCTV 기반 호스 누수 자동검출의 기술적 가능성을 확인하였다. 향후 실제 장기 CCTV 영상과 NG 데이터가 확보되면 threshold, temporal logic, PatchCore feature 및 Gate 조건을 조정하여 운영 성능을 검증할 수 있다.
