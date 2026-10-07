@@ -1,74 +1,154 @@
-Loading signals...
-Signals : 69,344
-Anchors : 49
-GT      : 49
+def match_anchors_to_gt(
+    anchors,
+    gt,
+    cfg,
+):
+    """
+    GT event와 CST anchor를 timestamp 기준으로 1:1 매칭한다.
 
-========================================
-Anchor / GT Matching
-========================================
-Matched anchors : 25/49
-Unmatched anchor : 24
-Unmatched GT     : 24
+    중요:
+    GT start/end는 Blade motion 기준이고,
+    CST anchor는 CST movement 기준이므로
+    anchor가 반드시 GT start~end 내부에 있을 필요는 없다.
 
-Class distribution
-----------------------------------------
-type
-type_2    25
-Name: count, dtype: int64
+    Matching distance:
+        anchor_time과 GT interval 사이의 거리
 
-Searching single rules...
-Searching two-rule combinations...
+    anchor가 GT interval 내부:
+        distance = 0
 
-========================================
-Calibration Result
-========================================
+    anchor가 GT 이전:
+        distance = gt_start - anchor_time
 
-BEST SINGLE RULE
-----------------------------------------
-cst_anchor_peak_dy >= -5.18625804
-TP=25 TN=0 FP=0 FN=0
-Recall    = 1.0000
-Precision = 1.0000
+    anchor가 GT 이후:
+        distance = anchor_time - gt_end
 
-BEST TWO-RULE
-----------------------------------------
-cst_anchor_peak_dy >= -5.18625804
-AND
-cst_dy_min >= -5.18625804
-TP=25 TN=0 FP=0 FN=0
-Recall    = 1.0000
-Precision = 1.0000
+    이후 전체 candidate를 distance가 가까운 순서로
+    greedy 1:1 matching한다.
+    """
 
-Top 10 Single Rules
-----------------------------------------
-           feature op  threshold  tp  tn  fp  fn  recall  precision
-cst_anchor_peak_dy >=  -5.186258  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy <=  -4.875354  25   0   0   0     1.0        1.0
-        cst_dy_min >=  -5.186258  25   0   0   0     1.0        1.0
-        cst_dy_min <=  -4.875354  25   0   0   0     1.0        1.0
-        cst_dy_max >=   0.637735  25   0   0   0     1.0        1.0
-        cst_dy_max <=  15.875188  25   0   0   0     1.0        1.0
-       cst_abs_max >=   5.086483  25   0   0   0     1.0        1.0
-       cst_abs_max <=  15.875188  25   0   0   0     1.0        1.0
-      cst_abs_mean >=   0.806638  25   0   0   0     1.0        1.0
-      cst_abs_mean <=   2.607984  25   0   0   0     1.0        1.0
+    candidates = []
 
-Top 10 Two-Rules
-----------------------------------------
-          feature1 op1  threshold1           feature2 op2  threshold2  tp  tn  fp  fn  recall  precision
-cst_anchor_peak_dy  >=   -5.186258         cst_dy_min  >=   -5.186258  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258         cst_dy_max  >=    0.637735  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258        cst_abs_max  >=    5.086483  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258       cst_abs_mean  >=    0.806638  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258        cst_abs_p90  >=    1.385523  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258        cst_abs_p95  >=    3.356634  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258     cst_phase_mean  >=    0.906055  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258      cst_phase_p50  >=    0.906261  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258  blade1_motion_max  >=    0.190775  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258 blade1_motion_mean  >=    0.032883  25   0   0   0     1.0        1.0
+    for anchor_idx, anchor in anchors.iterrows():
 
-Output
-----------------------------------------
-output\04_calibrate_anchor_classifier\anchor_features.csv
-output\04_calibrate_anchor_classifier\single_rule_results.csv
-output\04_calibrate_anchor_classifier\two_rule_results.csv
+        anchor_time = float(
+            anchor["cst_peak_sec"]
+        )
+
+        for gt_idx, gt_row in gt.iterrows():
+
+            gt_start = float(
+                gt_row["gt_start_sec"]
+            )
+
+            gt_end = float(
+                gt_row["gt_end_sec"]
+            )
+
+            # --------------------------------------------
+            # anchor ↔ GT interval distance
+            # --------------------------------------------
+
+            if (
+                gt_start
+                <= anchor_time
+                <= gt_end
+            ):
+
+                distance = 0.0
+
+            elif anchor_time < gt_start:
+
+                distance = (
+                    gt_start
+                    - anchor_time
+                )
+
+            else:
+
+                distance = (
+                    anchor_time
+                    - gt_end
+                )
+
+            # 너무 멀리 떨어진 event는 제외
+            if (
+                distance
+                >
+                cfg.gt_match_margin_sec
+            ):
+                continue
+
+            candidates.append({
+
+                "distance":
+                    distance,
+
+                "anchor_idx":
+                    anchor_idx,
+
+                "gt_idx":
+                    gt_idx,
+
+                "anchor_time":
+                    anchor_time,
+
+                "gt_start":
+                    gt_start,
+
+                "gt_end":
+                    gt_end,
+
+                "type":
+                    gt_row["type"],
+            })
+
+    # 가까운 순서
+    candidates.sort(
+        key=lambda x:
+            x["distance"]
+    )
+
+    used_anchors = set()
+    used_gt = set()
+
+    matches = {}
+
+    for candidate in candidates:
+
+        anchor_idx = (
+            candidate[
+                "anchor_idx"
+            ]
+        )
+
+        gt_idx = (
+            candidate[
+                "gt_idx"
+            ]
+        )
+
+        if anchor_idx in used_anchors:
+            continue
+
+        if gt_idx in used_gt:
+            continue
+
+        matches[
+            anchor_idx
+        ] = (
+            gt_idx,
+            candidate[
+                "distance"
+            ],
+        )
+
+        used_anchors.add(
+            anchor_idx
+        )
+
+        used_gt.add(
+            gt_idx
+        )
+
+    return matches
