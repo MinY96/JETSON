@@ -1,6 +1,3 @@
-Loading motion signals...
-Signal rows: 69,344
-
 CST detection
 ----------------------------------------
 Motion threshold : cst_dy <= -2.000
