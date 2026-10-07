@@ -1,47 +1,72 @@
 """
 phase_e3_extract_type2_clips.py
 
-Phase E-3
-=========
-motion_signals.csv에서 CST UP을 anchor로 Type2 후보를 검출하고,
-blade2 motion signal을 이용하여 Blade IN / OUT 경계를 추정한 뒤
-원본 MP4에서 표준 Type2 clip을 추출한다.
+Phase E-3 v3
+============
 
-Detection philosophy
---------------------
-1. Type2 판정의 핵심 anchor:
-       CST UP
+목적
+----
+Phase E-1의 motion_signals.csv를 이용하여
+장시간 CCTV 영상에서 Type2 이벤트를 자동 검출하고
+Phase A에서 사용할 Type2 clip을 추출한다.
 
-2. Blade signal의 역할:
-       Type2 판정 X
-       clip start/end boundary 탐색 O
+Type2 sequence
+--------------
+Blade IN
+    ↓
+CST UP
+    ↓
+CST STOP
+    ↓
+Blade OUT
 
-3. Sequence:
-       Blade IN
-          ↓
-       CST UP
-          ↓
-       CST STOP
-          ↓
-       Blade OUT
+Phase E-3에서는 정확한 CST STOP/measurement frame은 찾지 않는다.
+정확한 measurement frame 검출은 Phase A에서 수행한다.
 
-4. Recall 우선:
-       GT Type2 25/25 검출을 우선한다.
+핵심 변경사항
+-------------
+기존 방식:
+    특정 cst_dy band에 들어온 frame을 먼저 선택
+        ↓
+    grouping
+
+문제:
+    큰 CST movement도 -14 → -7 → -5 → 0처럼 이동하면서
+    Type2 band를 통과하기 때문에 가짜 anchor 발생.
+
+현재 방식:
+    cst_dy <= -2인 모든 CST negative movement 검출
+        ↓
+    temporal grouping
+        ↓
+    각 movement event 전체에서 min(cst_dy) 계산
+        ↓
+    event peak(min dy)를 이용해 Type2 선별
+
+현재 데이터:
+    Type2 event peak:
+        약 -4.875 ~ -5.186
+
+    다른 큰 CST movement:
+        약 -10.86 이하
+
+따라서 기본 Type2 event 조건:
+    -8 < event_min_dy <= -2
 
 Input
 -----
-- motion_signals.csv
-- blade_in_out_timestamp.xlsx
-- original MP4
+motion_signals.csv
+blade_in_out_timestamp.xlsx
+original.mp4
 
 Output
 ------
-phase_e3_result/
+output/
+    detected_events.csv
+    gt_comparison.csv
     clips/
         type2_001.mp4
         ...
-    detected_events.csv
-    gt_comparison.csv
 """
 
 from __future__ import annotations
@@ -62,88 +87,90 @@ import pandas as pd
 @dataclass
 class Config:
 
-    # --------------------------------------------------------
-    # CST UP
-    #
-    # E-2:
-    #
-    # Type1:
-    #     cst_dy_min
-    #     +0.3766 ~ +0.4788
-    #
-    # Type2:
-    #     cst_dy_min
-    #     -5.1863 ~ -4.8754
-    #
-    # 따라서 -2.0은 상당히 보수적인 high-recall threshold.
-    # --------------------------------------------------------
+    # ========================================================
+    # CST movement detection
+    # ========================================================
 
-    cst_up_threshold: float = -2.0
+    # 모든 의미 있는 negative CST movement 검출
+    cst_motion_threshold: float = -2.0
 
-    # CST UP candidate들을 하나의 event로 묶을 시간
+    # 가까운 CST motion frame을 하나의 event로 연결
     cst_group_gap_sec: float = 0.40
 
-    # 너무 짧은 단발성 noise 제거
+    # 최소 event duration
     cst_min_event_sec: float = 0.03
 
-    # --------------------------------------------------------
-    # Blade boundary search
-    # --------------------------------------------------------
+    # ========================================================
+    # Type2 event classification
+    # ========================================================
+
+    # 중요:
+    # 이 threshold는 frame에 적용하는 것이 아니라
+    # CST movement event 전체의 min(cst_dy)에 적용한다.
+    #
+    # 실제 Type2:
+    #     약 -4.875 ~ -5.186
+    #
+    # 다른 큰 CST movement:
+    #     약 -10.86 이하
+
+    cst_type2_peak_min: float = -8.0
+    cst_type2_peak_max: float = -2.0
+
+    # ========================================================
+    # Blade boundary
+    # ========================================================
 
     blade_name: str = "blade2"
 
-    # CST anchor 기준 탐색 범위
+    # CST event 이전 Blade IN 탐색 범위
     blade_in_search_sec: float = 3.0
+
+    # CST event 이후 Blade OUT 탐색 범위
     blade_out_search_sec: float = 3.0
 
-    # motion_ratio threshold는 고정값 대신
-    # local adaptive threshold 사용
+    # Blade local adaptive threshold
     blade_motion_quantile: float = 0.75
 
-    # 너무 낮은 threshold 방지
     blade_motion_min_threshold: float = 0.015
 
-    # 연속 motion group 최소 길이
     blade_min_motion_sec: float = 0.06
 
-    # motion group 사이 gap merge
     blade_group_gap_sec: float = 0.20
 
-    # --------------------------------------------------------
-    # CST STOP
-    # --------------------------------------------------------
-
-    cst_stop_abs_threshold: float = 0.30
-
-    cst_stop_min_sec: float = 0.05
-
-    # --------------------------------------------------------
-    # Final clip margin
-    # --------------------------------------------------------
+    # ========================================================
+    # Clip
+    # ========================================================
 
     pre_margin_sec: float = 0.50
+
     post_margin_sec: float = 0.50
 
-    # Blade boundary 검출 실패 시 fallback
-    fallback_pre_sec: float = 2.5
-    fallback_post_sec: float = 2.5
+    # Blade boundary 검출 실패 시
+    # CST event 기준 fallback
+    fallback_pre_sec: float = 3.0
 
-    # --------------------------------------------------------
-    # GT matching
-    # --------------------------------------------------------
+    fallback_post_sec: float = 3.0
+
+    # ========================================================
+    # GT
+    # ========================================================
 
     gt_match_tolerance_sec: float = 3.0
 
 
 # ============================================================
-# Time utility
+# Time utilities
 # ============================================================
 
 def parse_video_time(value) -> float:
 
     if pd.isna(value):
-        raise ValueError("Timestamp is empty")
+        raise ValueError(
+            "Timestamp is empty"
+        )
 
+    # datetime.time 등
     if hasattr(value, "hour"):
 
         return (
@@ -152,26 +179,44 @@ def parse_video_time(value) -> float:
             + value.second
         )
 
-    text = str(value).strip()
-    text = text.lstrip("'")
+    text = (
+        str(value)
+        .strip()
+        .lstrip("'")
+    )
 
     parts = text.split(":")
 
+    # MM:SS
     if len(parts) == 2:
 
-        minute = int(parts[0])
-        second = float(parts[1])
+        minute = int(
+            parts[0]
+        )
+
+        second = float(
+            parts[1]
+        )
 
         return (
             minute * 60
             + second
         )
 
+    # HH:MM:SS
     if len(parts) == 3:
 
-        hour = int(parts[0])
-        minute = int(parts[1])
-        second = float(parts[2])
+        hour = int(
+            parts[0]
+        )
+
+        minute = int(
+            parts[1]
+        )
+
+        second = float(
+            parts[2]
+        )
 
         return (
             hour * 3600
@@ -184,7 +229,9 @@ def parse_video_time(value) -> float:
     )
 
 
-def format_video_time(sec: float) -> str:
+def format_video_time(
+    sec: float,
+) -> str:
 
     sec = max(
         0.0,
@@ -196,7 +243,8 @@ def format_video_time(sec: float) -> str:
     )
 
     minute = int(
-        (sec % 3600) // 60
+        (sec % 3600)
+        // 60
     )
 
     second = (
@@ -211,7 +259,7 @@ def format_video_time(sec: float) -> str:
 
 
 # ============================================================
-# Group boolean mask
+# Temporal grouping
 # ============================================================
 
 def find_boolean_groups(
@@ -220,15 +268,11 @@ def find_boolean_groups(
     max_gap_sec: float,
     min_duration_sec: float,
 ):
-
     """
-    True mask를 temporal group으로 묶는다.
+    True mask를 시간 기준으로 group화한다.
 
-    예:
-        True True False True True
-
-    False 구간이 max_gap_sec 이하이면
-    하나의 group으로 merge.
+    True frame 사이의 시간 차이가 max_gap_sec 이하이면
+    동일 movement event로 연결한다.
     """
 
     indices = np.where(
@@ -246,7 +290,9 @@ def find_boolean_groups(
 
     for idx in indices[1:]:
 
-        prev_idx = current[-1]
+        prev_idx = (
+            current[-1]
+        )
 
         prev_time = float(
             df.iloc[
@@ -260,11 +306,12 @@ def find_boolean_groups(
             ]["time_sec"]
         )
 
-        if (
+        gap = (
             curr_time
             - prev_time
-            <= max_gap_sec
-        ):
+        )
+
+        if gap <= max_gap_sec:
 
             current.append(
                 idx
@@ -288,8 +335,13 @@ def find_boolean_groups(
 
     for group in groups:
 
-        start_idx = group[0]
-        end_idx = group[-1]
+        start_idx = (
+            group[0]
+        )
+
+        end_idx = (
+            group[-1]
+        )
 
         start_time = float(
             df.iloc[
@@ -308,11 +360,14 @@ def find_boolean_groups(
             - start_time
         )
 
-        # 15 FPS에서는 single frame event도
-        # duration=0이므로 최소 frame 수 관점도 같이 허용
+        # 15 FPS에서는 실제 짧은 movement가
+        # 1~2 frame일 수 있으므로
+        # duration 또는 frame count 조건 사용
         if (
-            duration >= min_duration_sec
-            or len(group) >= 2
+            duration
+            >= min_duration_sec
+            or
+            len(group) >= 2
         ):
 
             result.append({
@@ -340,87 +395,163 @@ def find_boolean_groups(
 
 
 # ============================================================
-# CST UP Detection
+# CST movement detection
 # ============================================================
 
 def detect_cst_up_events(
     signals: pd.DataFrame,
     cfg: Config,
 ):
+    """
+    2-stage CST detection.
 
-    dy = signals[
-        "cst_dy"
-    ].to_numpy(
-        dtype=np.float64
+    Stage 1
+    -------
+    cst_dy <= cst_motion_threshold인 frame을 검출하고
+    시간적으로 하나의 CST movement로 묶는다.
+
+    Stage 2
+    -------
+    각 movement 전체에서 실제 minimum cst_dy를 계산한다.
+
+    Type2 event:
+        cst_type2_peak_min
+            <
+        event_min_dy
+            <=
+        cst_type2_peak_max
+
+    중요
+    ----
+    Type2 peak band를 frame에 직접 적용하지 않는다.
+
+    큰 CST movement도 이동 중 -6~-4 등의 영역을
+    통과하기 때문에 frame-level band filtering을 하면
+    false candidate가 발생한다.
+    """
+
+    dy = (
+        signals[
+            "cst_dy"
+        ]
+        .to_numpy(
+            dtype=np.float64
+        )
     )
 
-    mask = (
+    # ========================================================
+    # Stage 1
+    # 모든 negative CST movement 검출
+    # ========================================================
+
+    motion_mask = (
         dy
-        <= cfg.cst_up_threshold
+        <=
+        cfg.cst_motion_threshold
     )
 
     groups = find_boolean_groups(
         signals,
-        mask,
+        motion_mask,
         max_gap_sec=
             cfg.cst_group_gap_sec,
         min_duration_sec=
             cfg.cst_min_event_sec,
     )
 
-    events = []
+    print()
+    print(
+        f"Raw CST movement events: "
+        f"{len(groups)}"
+    )
 
-    for group in groups:
+    all_events = []
+
+    type2_events = []
+
+    # ========================================================
+    # Stage 2
+    # 각 movement 전체 peak 계산
+    # ========================================================
+
+    for (
+        raw_event_id,
+        group,
+    ) in enumerate(
+        groups,
+        start=1,
+    ):
 
         start_idx = (
-            group["start_idx"]
+            group[
+                "start_idx"
+            ]
         )
 
         end_idx = (
-            group["end_idx"]
+            group[
+                "end_idx"
+            ]
         )
 
-        # group 범위 내 실제 minimum dy
         local = signals.iloc[
             start_idx:
             end_idx + 1
         ]
 
-        min_local_idx = (
+        # ----------------------------------------------------
+        # movement event 전체에서 가장 작은 cst_dy
+        # ----------------------------------------------------
+
+        peak_idx = (
             local[
                 "cst_dy"
-            ].idxmin()
+            ]
+            .idxmin()
         )
 
-        peak_row = signals.loc[
-            min_local_idx
-        ]
+        peak_row = (
+            signals.loc[
+                peak_idx
+            ]
+        )
 
-        events.append({
+        peak_dy = float(
+            peak_row[
+                "cst_dy"
+            ]
+        )
+
+        peak_time = float(
+            peak_row[
+                "time_sec"
+            ]
+        )
+
+        event = {
+
+            "raw_event_id":
+                raw_event_id,
 
             "cst_start_time":
-                group[
-                    "start_time"
-                ],
+                float(
+                    group[
+                        "start_time"
+                    ]
+                ),
 
             "cst_end_time":
-                group[
-                    "end_time"
-                ],
+                float(
+                    group[
+                        "end_time"
+                    ]
+                ),
 
             "cst_peak_time":
-                float(
-                    peak_row[
-                        "time_sec"
-                    ]
-                ),
+                peak_time,
 
             "cst_peak_dy":
-                float(
-                    peak_row[
-                        "cst_dy"
-                    ]
-                ),
+                peak_dy,
 
             "cst_peak_frame":
                 int(
@@ -428,13 +559,97 @@ def detect_cst_up_events(
                         "frame_idx"
                     ]
                 ),
-        })
 
-    return events
+            "cst_duration_sec":
+                float(
+                    group[
+                        "duration"
+                    ]
+                ),
+        }
+
+        all_events.append(
+            event
+        )
+
+        # ====================================================
+        # Type2 event classification
+        # ====================================================
+
+        is_type2 = (
+            peak_dy
+            >
+            cfg.cst_type2_peak_min
+            and
+            peak_dy
+            <=
+            cfg.cst_type2_peak_max
+        )
+
+        if is_type2:
+
+            type2_events.append(
+                event
+            )
+
+    # ========================================================
+    # Diagnostic
+    # ========================================================
+
+    print()
+    print(
+        "Raw CST movement peaks"
+    )
+
+    print(
+        "----------------------------------------"
+    )
+
+    type2_raw_ids = {
+        event[
+            "raw_event_id"
+        ]
+        for event
+        in type2_events
+    }
+
+    for event in all_events:
+
+        if (
+            event[
+                "raw_event_id"
+            ]
+            in type2_raw_ids
+        ):
+
+            label = (
+                "TYPE2"
+            )
+
+        else:
+
+            label = (
+                "REJECT"
+            )
+
+        print(
+            f"#{event['raw_event_id']:02d} "
+            f"{format_video_time(event['cst_peak_time'])} "
+            f"dy={event['cst_peak_dy']:.4f} "
+            f"[{label}]"
+        )
+
+    print()
+    print(
+        f"Type2 CST-UP anchors: "
+        f"{len(type2_events)}"
+    )
+
+    return type2_events
 
 
 # ============================================================
-# Local Blade Motion Threshold
+# Blade threshold
 # ============================================================
 
 def calculate_local_motion_threshold(
@@ -473,39 +688,51 @@ def calculate_local_motion_threshold(
 
 
 # ============================================================
-# Blade Motion Groups
+# Blade motion groups
 # ============================================================
 
 def find_blade_motion_groups(
-    signals,
-    start_time,
-    end_time,
-    cfg,
+    signals: pd.DataFrame,
+    start_time: float,
+    end_time: float,
+    cfg: Config,
 ):
 
     blade_col = (
-        f"{cfg.blade_name}_"
-        "motion_ratio"
+        f"{cfg.blade_name}"
+        "_motion_ratio"
     )
 
-    window = signals[
-        (
-            signals[
-                "time_sec"
-            ]
-            >= start_time
+    window = (
+        signals[
+            (
+                signals[
+                    "time_sec"
+                ]
+                >=
+                start_time
+            )
+            &
+            (
+                signals[
+                    "time_sec"
+                ]
+                <=
+                end_time
+            )
+        ]
+        .copy()
+        .reset_index(
+            drop=True
         )
-        &
-        (
-            signals[
-                "time_sec"
-            ]
-            <= end_time
-        )
-    ].copy()
+    )
 
     if len(window) == 0:
-        return [], np.nan
+
+        return (
+            [],
+            np.nan,
+        )
 
     threshold = (
         calculate_local_motion_threshold(
@@ -519,8 +746,12 @@ def find_blade_motion_groups(
     mask = (
         window[
             blade_col
-        ].to_numpy()
-        >= threshold
+        ]
+        .to_numpy(
+            dtype=np.float64
+        )
+        >=
+        threshold
     )
 
     groups = find_boolean_groups(
@@ -537,11 +768,15 @@ def find_blade_motion_groups(
     for group in groups:
 
         start_idx = (
-            group["start_idx"]
+            group[
+                "start_idx"
+            ]
         )
 
         end_idx = (
-            group["end_idx"]
+            group[
+                "end_idx"
+            ]
         )
 
         local = window.iloc[
@@ -549,32 +784,41 @@ def find_blade_motion_groups(
             end_idx + 1
         ]
 
-        peak_idx = (
+        peak_local_idx = (
             local[
                 blade_col
-            ].idxmax()
+            ]
+            .idxmax()
         )
 
-        peak_row = window.loc[
-            peak_idx
-        ]
+        peak_row = (
+            window.loc[
+                peak_local_idx
+            ]
+        )
 
         result.append({
 
             "start_time":
-                group[
-                    "start_time"
-                ],
+                float(
+                    group[
+                        "start_time"
+                    ]
+                ),
 
             "end_time":
-                group[
-                    "end_time"
-                ],
+                float(
+                    group[
+                        "end_time"
+                    ]
+                ),
 
             "duration":
-                group[
-                    "duration"
-                ],
+                float(
+                    group[
+                        "duration"
+                    ]
+                ),
 
             "peak_time":
                 float(
@@ -605,15 +849,16 @@ def find_blade_motion_groups(
 # ============================================================
 
 def find_blade_in(
-    signals,
-    cst_start_time,
-    cfg,
+    signals: pd.DataFrame,
+    cst_start_time: float,
+    cfg: Config,
 ):
 
     search_start = max(
         0.0,
         cst_start_time
-        - cfg.blade_in_search_sec,
+        -
+        cfg.blade_in_search_sec,
     )
 
     search_end = (
@@ -632,80 +877,24 @@ def find_blade_in(
 
     if not groups:
 
-        return None, threshold
+        return (
+            None,
+            threshold,
+        )
 
-    # CST UP 직전에 끝나는 motion group을
-    # Blade IN 후보로 사용.
-    #
-    # peak magnitude가 가장 큰 group보다
-    # temporal proximity를 우선한다.
+    # CST movement 직전의 가장 가까운 Blade motion
     candidate = max(
         groups,
         key=lambda g:
-            g["end_time"]
+            g[
+                "end_time"
+            ],
     )
 
     return (
         candidate,
         threshold,
     )
-
-
-# ============================================================
-# CST STOP
-# ============================================================
-
-def find_cst_stop(
-    signals,
-    cst_end_time,
-    search_end_time,
-    cfg,
-):
-
-    window = signals[
-        (
-            signals[
-                "time_sec"
-            ]
-            >= cst_end_time
-        )
-        &
-        (
-            signals[
-                "time_sec"
-            ]
-            <= search_end_time
-        )
-    ].copy()
-
-    if len(window) == 0:
-        return None
-
-    mask = (
-        np.abs(
-            window[
-                "cst_dy"
-            ].to_numpy(
-                dtype=np.float64
-            )
-        )
-        <=
-        cfg.cst_stop_abs_threshold
-    )
-
-    groups = find_boolean_groups(
-        window,
-        mask,
-        max_gap_sec=0.10,
-        min_duration_sec=
-            cfg.cst_stop_min_sec,
-    )
-
-    if not groups:
-        return None
-
-    # CST UP 직후 최초 stable group
-    return groups[0]
 
 
 # ============================================================
@@ -713,14 +902,19 @@ def find_cst_stop(
 # ============================================================
 
 def find_blade_out(
-    signals,
-    search_start_time,
-    cfg,
+    signals: pd.DataFrame,
+    cst_end_time: float,
+    cfg: Config,
 ):
 
+    search_start = (
+        cst_end_time
+    )
+
     search_end = (
-        search_start_time
-        + cfg.blade_out_search_sec
+        cst_end_time
+        +
+        cfg.blade_out_search_sec
     )
 
     (
@@ -728,21 +922,25 @@ def find_blade_out(
         threshold,
     ) = find_blade_motion_groups(
         signals,
-        search_start_time,
+        search_start,
         search_end,
         cfg,
     )
 
     if not groups:
 
-        return None, threshold
+        return (
+            None,
+            threshold,
+        )
 
-    # CST STOP 이후 최초 motion group을
-    # Blade OUT 후보로 사용.
+    # CST movement 이후 가장 먼저 나타난 Blade motion
     candidate = min(
         groups,
         key=lambda g:
-            g["start_time"]
+            g[
+                "start_time"
+            ],
     )
 
     return (
@@ -752,37 +950,40 @@ def find_blade_out(
 
 
 # ============================================================
-# Build Type2 Events
+# Build Type2 events
 # ============================================================
 
 def build_type2_events(
-    signals,
+    signals: pd.DataFrame,
     cst_events,
-    cfg,
+    cfg: Config,
 ):
 
     detected = []
 
-    for idx, cst in enumerate(
+    for (
+        event_id,
+        cst,
+    ) in enumerate(
         cst_events,
         start=1,
     ):
 
-        cst_start = (
+        cst_start = float(
             cst[
                 "cst_start_time"
             ]
         )
 
-        cst_end = (
+        cst_end = float(
             cst[
                 "cst_end_time"
             ]
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Blade IN
-        # ----------------------------------------------------
+        # ====================================================
 
         (
             blade_in,
@@ -793,58 +994,22 @@ def build_type2_events(
             cfg,
         )
 
-        # ----------------------------------------------------
-        # CST STOP
-        # ----------------------------------------------------
-
-        stop_search_end = (
-            cst_end
-            + cfg.blade_out_search_sec
-        )
-
-        cst_stop = (
-            find_cst_stop(
-                signals,
-                cst_end,
-                stop_search_end,
-                cfg,
-            )
-        )
-
-        # ----------------------------------------------------
-        # Blade OUT search start
-        # ----------------------------------------------------
-
-        if cst_stop is not None:
-
-            blade_out_search_start = (
-                cst_stop[
-                    "end_time"
-                ]
-            )
-
-        else:
-
-            blade_out_search_start = (
-                cst_end
-            )
-
-        # ----------------------------------------------------
+        # ====================================================
         # Blade OUT
-        # ----------------------------------------------------
+        # ====================================================
 
         (
             blade_out,
             blade_out_threshold,
         ) = find_blade_out(
             signals,
-            blade_out_search_start,
+            cst_end,
             cfg,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Clip start
-        # ----------------------------------------------------
+        # ====================================================
 
         if blade_in is not None:
 
@@ -856,7 +1021,7 @@ def build_type2_events(
                 cfg.pre_margin_sec
             )
 
-            in_source = (
+            blade_in_source = (
                 "blade"
             )
 
@@ -868,7 +1033,7 @@ def build_type2_events(
                 cfg.fallback_pre_sec
             )
 
-            in_source = (
+            blade_in_source = (
                 "fallback"
             )
 
@@ -877,9 +1042,9 @@ def build_type2_events(
             clip_start,
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # Clip end
-        # ----------------------------------------------------
+        # ====================================================
 
         if blade_out is not None:
 
@@ -891,7 +1056,7 @@ def build_type2_events(
                 cfg.post_margin_sec
             )
 
-            out_source = (
+            blade_out_source = (
                 "blade"
             )
 
@@ -903,55 +1068,108 @@ def build_type2_events(
                 cfg.fallback_post_sec
             )
 
-            out_source = (
+            blade_out_source = (
                 "fallback"
             )
 
-        # ----------------------------------------------------
-        # Confidence
-        # ----------------------------------------------------
+        # 잘못된 boundary 보호
+        if clip_end <= clip_start:
+
+            clip_start = max(
+                0.0,
+                cst_start
+                -
+                cfg.fallback_pre_sec,
+            )
+
+            clip_end = (
+                cst_end
+                +
+                cfg.fallback_post_sec
+            )
+
+            blade_in_source = (
+                "fallback"
+            )
+
+            blade_out_source = (
+                "fallback"
+            )
+
+        # ====================================================
+        # Sequence score
+        # ====================================================
 
         score = 1.0
 
         if blade_in is None:
-            score -= 0.20
-
-        if cst_stop is None:
-            score -= 0.20
+            score -= 0.25
 
         if blade_out is None:
-            score -= 0.20
+            score -= 0.25
 
         score = max(
             0.0,
             score,
         )
 
+        # ====================================================
+        # Result
+        # ====================================================
+
         detected.append({
 
             "event_id":
-                idx,
+                event_id,
+
+            "raw_cst_event_id":
+                int(
+                    cst[
+                        "raw_event_id"
+                    ]
+                ),
+
+            # ------------------------------------------------
+            # CST
+            # ------------------------------------------------
 
             "cst_start_sec":
                 cst_start,
 
             "cst_peak_sec":
-                cst[
-                    "cst_peak_time"
-                ],
+                float(
+                    cst[
+                        "cst_peak_time"
+                    ]
+                ),
 
             "cst_end_sec":
                 cst_end,
 
             "cst_peak_dy":
-                cst[
-                    "cst_peak_dy"
-                ],
+                float(
+                    cst[
+                        "cst_peak_dy"
+                    ]
+                ),
 
             "cst_peak_frame":
-                cst[
-                    "cst_peak_frame"
-                ],
+                int(
+                    cst[
+                        "cst_peak_frame"
+                    ]
+                ),
+
+            "cst_duration_sec":
+                float(
+                    cst[
+                        "cst_duration_sec"
+                    ]
+                ),
+
+            # ------------------------------------------------
+            # Blade IN
+            # ------------------------------------------------
 
             "blade_in_start_sec":
                 (
@@ -992,23 +1210,9 @@ def build_type2_events(
             "blade_in_threshold":
                 blade_in_threshold,
 
-            "cst_stop_start_sec":
-                (
-                    cst_stop[
-                        "start_time"
-                    ]
-                    if cst_stop
-                    else np.nan
-                ),
-
-            "cst_stop_end_sec":
-                (
-                    cst_stop[
-                        "end_time"
-                    ]
-                    if cst_stop
-                    else np.nan
-                ),
+            # ------------------------------------------------
+            # Blade OUT
+            # ------------------------------------------------
 
             "blade_out_start_sec":
                 (
@@ -1049,6 +1253,10 @@ def build_type2_events(
             "blade_out_threshold":
                 blade_out_threshold,
 
+            # ------------------------------------------------
+            # Clip
+            # ------------------------------------------------
+
             "clip_start_sec":
                 clip_start,
 
@@ -1056,14 +1264,17 @@ def build_type2_events(
                 clip_end,
 
             "clip_duration_sec":
-                clip_end
-                - clip_start,
+                (
+                    clip_end
+                    -
+                    clip_start
+                ),
 
             "blade_in_source":
-                in_source,
+                blade_in_source,
 
             "blade_out_source":
-                out_source,
+                blade_out_source,
 
             "sequence_score":
                 score,
@@ -1089,60 +1300,75 @@ def load_gt(
         },
     )
 
-    gt["type"] = (
-        gt["type"]
+    gt[
+        "type"
+    ] = (
+        gt[
+            "type"
+        ]
         .str.strip()
         .str.lower()
     )
 
     gt[
         "gt_start_sec"
-    ] = gt[
-        "start_sec"
-    ].apply(
-        parse_video_time
+    ] = (
+        gt[
+            "start_sec"
+        ]
+        .apply(
+            parse_video_time
+        )
     )
 
     gt[
         "gt_end_sec"
-    ] = gt[
-        "end_sec"
-    ].apply(
-        parse_video_time
+    ] = (
+        gt[
+            "end_sec"
+        ]
+        .apply(
+            parse_video_time
+        )
     )
 
     return gt
 
 
 # ============================================================
-# GT Comparison
+# GT comparison
 # ============================================================
 
 def compare_with_gt(
-    detected_df,
-    gt_df,
-    cfg,
+    detected_df: pd.DataFrame,
+    gt_df: pd.DataFrame,
+    cfg: Config,
 ):
 
-    gt2 = gt_df[
+    gt2 = (
         gt_df[
-            "type"
+            gt_df[
+                "type"
+            ]
+            ==
+            "type_2"
         ]
-        ==
-        "type_2"
-    ].copy()
-
-    gt2 = gt2.sort_values(
-        "gt_start_sec"
-    ).reset_index(
-        drop=True
+        .copy()
+        .sort_values(
+            "gt_start_sec"
+        )
+        .reset_index(
+            drop=True
+        )
     )
 
     rows = []
 
     used_detected = set()
 
-    for _, gt in gt2.iterrows():
+    for _, gt in (
+        gt2.iterrows()
+    ):
 
         gt_start = float(
             gt[
@@ -1165,11 +1391,15 @@ def compare_with_gt(
         best_idx = None
         best_distance = None
 
-        for det_idx, det in (
-            detected_df.iterrows()
-        ):
+        for (
+            det_idx,
+            det,
+        ) in detected_df.iterrows():
 
-            if det_idx in used_detected:
+            if (
+                det_idx
+                in used_detected
+            ):
                 continue
 
             anchor = float(
@@ -1178,15 +1408,16 @@ def compare_with_gt(
                 ]
             )
 
-            # anchor가 GT 구간 또는 tolerance
-            # 범위에 들어오는지 검사
             if (
                 anchor
                 <
                 gt_start
                 -
                 cfg.gt_match_tolerance_sec
-                or
+            ):
+                continue
+
+            if (
                 anchor
                 >
                 gt_end
@@ -1216,6 +1447,10 @@ def compare_with_gt(
                 best_distance = (
                     distance
                 )
+
+        # ====================================================
+        # Miss
+        # ====================================================
 
         if best_idx is None:
 
@@ -1251,13 +1486,19 @@ def compare_with_gt(
 
             continue
 
+        # ====================================================
+        # Match
+        # ====================================================
+
         used_detected.add(
             best_idx
         )
 
-        det = detected_df.loc[
-            best_idx
-        ]
+        det = (
+            detected_df.loc[
+                best_idx
+            ]
+        )
 
         rows.append({
 
@@ -1274,14 +1515,18 @@ def compare_with_gt(
                 True,
 
             "detected_event_id":
-                det[
-                    "event_id"
-                ],
+                int(
+                    det[
+                        "event_id"
+                    ]
+                ),
 
             "cst_peak_sec":
-                det[
-                    "cst_peak_sec"
-                ],
+                float(
+                    det[
+                        "cst_peak_sec"
+                    ]
+                ),
 
             "time_error_sec":
                 (
@@ -1295,14 +1540,18 @@ def compare_with_gt(
                 ),
 
             "clip_start_sec":
-                det[
-                    "clip_start_sec"
-                ],
+                float(
+                    det[
+                        "clip_start_sec"
+                    ]
+                ),
 
             "clip_end_sec":
-                det[
-                    "clip_end_sec"
-                ],
+                float(
+                    det[
+                        "clip_end_sec"
+                    ]
+                ),
         })
 
     comparison = pd.DataFrame(
@@ -1316,13 +1565,13 @@ def compare_with_gt(
 
 
 # ============================================================
-# Clip Export
+# Clip export
 # ============================================================
 
 def export_clips(
-    video_path,
-    detected_df,
-    clip_dir,
+    video_path: Path,
+    detected_df: pd.DataFrame,
+    clip_dir: Path,
 ):
 
     clip_dir.mkdir(
@@ -1331,7 +1580,9 @@ def export_clips(
     )
 
     cap = cv2.VideoCapture(
-        str(video_path)
+        str(
+            video_path
+        )
     )
 
     if not cap.isOpened():
@@ -1359,6 +1610,47 @@ def export_clips(
         )
     )
 
+    total_frames = int(
+        cap.get(
+            cv2.CAP_PROP_FRAME_COUNT
+        )
+    )
+
+    duration_sec = (
+        total_frames / fps
+        if fps > 0
+        else 0.0
+    )
+
+    print()
+    print(
+        "Video"
+    )
+
+    print(
+        "----------------------------------------"
+    )
+
+    print(
+        f"FPS        : "
+        f"{fps:.3f}"
+    )
+
+    print(
+        f"Resolution : "
+        f"{width}x{height}"
+    )
+
+    print(
+        f"Frames     : "
+        f"{total_frames:,}"
+    )
+
+    print(
+        f"Duration   : "
+        f"{format_video_time(duration_sec)}"
+    )
+
     fourcc = (
         cv2.VideoWriter_fourcc(
             *"mp4v"
@@ -1375,16 +1667,22 @@ def export_clips(
             ]
         )
 
-        start_sec = float(
-            event[
-                "clip_start_sec"
-            ]
+        start_sec = max(
+            0.0,
+            float(
+                event[
+                    "clip_start_sec"
+                ]
+            ),
         )
 
-        end_sec = float(
-            event[
-                "clip_end_sec"
-            ]
+        end_sec = min(
+            duration_sec,
+            float(
+                event[
+                    "clip_end_sec"
+                ]
+            ),
         )
 
         start_frame = max(
@@ -1392,16 +1690,21 @@ def export_clips(
             int(
                 np.floor(
                     start_sec
-                    * fps
+                    *
+                    fps
                 )
             ),
         )
 
-        end_frame = int(
-            np.ceil(
-                end_sec
-                * fps
-            )
+        end_frame = min(
+            total_frames - 1,
+            int(
+                np.ceil(
+                    end_sec
+                    *
+                    fps
+                )
+            ),
         )
 
         output_path = (
@@ -1415,7 +1718,10 @@ def export_clips(
             f"{format_video_time(start_sec)} "
             f"~ "
             f"{format_video_time(end_sec)} "
-            f"({end_sec-start_sec:.2f}s)"
+            f"| "
+            f"{end_sec - start_sec:.2f}s "
+            f"| frame "
+            f"{start_frame}~{end_frame}"
         )
 
         cap.set(
@@ -1423,20 +1729,26 @@ def export_clips(
             start_frame,
         )
 
-        writer = cv2.VideoWriter(
-            str(output_path),
-            fourcc,
-            fps,
-            (
-                width,
-                height,
-            ),
+        writer = (
+            cv2.VideoWriter(
+                str(
+                    output_path
+                ),
+                fourcc,
+                fps,
+                (
+                    width,
+                    height,
+                ),
+            )
         )
 
         if not writer.isOpened():
 
+            cap.release()
+
             raise RuntimeError(
-                f"Cannot create: "
+                f"Cannot create video: "
                 f"{output_path}"
             )
 
@@ -1446,12 +1758,19 @@ def export_clips(
 
         while (
             frame_idx
-            <= end_frame
+            <=
+            end_frame
         ):
 
-            ok, frame = cap.read()
+            ok, frame = (
+                cap.read()
+            )
 
-            if not ok:
+            if (
+                not ok
+                or
+                frame is None
+            ):
                 break
 
             writer.write(
@@ -1471,33 +1790,89 @@ def export_clips(
 
 def main():
 
-    parser = argparse.ArgumentParser()
+    parser = (
+        argparse.ArgumentParser(
+            description=(
+                "Phase E-3 v3: "
+                "event-level Type2 CST detection "
+                "and clip extraction"
+            )
+        )
+    )
+
+    # ========================================================
+    # Input
+    # ========================================================
 
     parser.add_argument(
         "--signals",
         required=True,
+        help=(
+            "Phase E-1 "
+            "motion_signals.csv"
+        ),
     )
 
     parser.add_argument(
         "--timestamps",
         required=True,
+        help=(
+            "Ground-truth Excel"
+        ),
     )
 
     parser.add_argument(
         "--video",
         required=True,
+        help=(
+            "Original long MP4"
+        ),
     )
 
     parser.add_argument(
         "--output",
-        default="phase_e3_result",
+        default=(
+            "phase_e3_result"
+        ),
+    )
+
+    # ========================================================
+    # CST
+    # ========================================================
+
+    parser.add_argument(
+        "--cst-motion-threshold",
+        type=float,
+        default=-2.0,
+        help=(
+            "Raw CST negative movement "
+            "threshold"
+        ),
     )
 
     parser.add_argument(
-        "--cst-up-threshold",
+        "--cst-type2-peak-min",
+        type=float,
+        default=-8.0,
+        help=(
+            "Type2 event minimum dy "
+            "lower bound (exclusive)"
+        ),
+    )
+
+    parser.add_argument(
+        "--cst-type2-peak-max",
         type=float,
         default=-2.0,
+        help=(
+            "Type2 event minimum dy "
+            "upper bound (inclusive)"
+        ),
     )
+
+    # ========================================================
+    # Clip
+    # ========================================================
 
     parser.add_argument(
         "--pre-margin",
@@ -1511,16 +1886,44 @@ def main():
         default=0.5,
     )
 
+    # ========================================================
+    # Validation
+    # ========================================================
+
     parser.add_argument(
         "--no-export",
         action="store_true",
         help=(
-            "Detection/GT comparison만 수행하고 "
-            "MP4 clip은 저장하지 않음"
+            "Detection/GT evaluation만 수행하고 "
+            "MP4는 저장하지 않는다."
         ),
     )
 
-    args = parser.parse_args()
+    args = (
+        parser.parse_args()
+    )
+
+    # ========================================================
+    # Config
+    # ========================================================
+
+    cfg = Config(
+
+        cst_motion_threshold=
+            args.cst_motion_threshold,
+
+        cst_type2_peak_min=
+            args.cst_type2_peak_min,
+
+        cst_type2_peak_max=
+            args.cst_type2_peak_max,
+
+        pre_margin_sec=
+            args.pre_margin,
+
+        post_margin_sec=
+            args.post_margin,
+    )
 
     output_dir = Path(
         args.output
@@ -1531,19 +1934,8 @@ def main():
         exist_ok=True,
     )
 
-    cfg = Config(
-        cst_up_threshold=
-            args.cst_up_threshold,
-
-        pre_margin_sec=
-            args.pre_margin,
-
-        post_margin_sec=
-            args.post_margin,
-    )
-
     # ========================================================
-    # Load signals
+    # Load signal
     # ========================================================
 
     print(
@@ -1553,6 +1945,38 @@ def main():
     signals = pd.read_csv(
         args.signals
     )
+
+    required_columns = [
+
+        "frame_idx",
+
+        "time_sec",
+
+        "cst_dy",
+
+        (
+            f"{cfg.blade_name}"
+            "_motion_ratio"
+        ),
+    ]
+
+    missing_columns = [
+
+        column
+
+        for column
+        in required_columns
+
+        if column
+        not in signals.columns
+    ]
+
+    if missing_columns:
+
+        raise ValueError(
+            "Missing signal columns: "
+            f"{missing_columns}"
+        )
 
     signals = (
         signals
@@ -1570,7 +1994,34 @@ def main():
     )
 
     # ========================================================
-    # Detect CST UP
+    # Config diagnostic
+    # ========================================================
+
+    print()
+
+    print(
+        "CST detection"
+    )
+
+    print(
+        "----------------------------------------"
+    )
+
+    print(
+        f"Motion threshold : "
+        f"cst_dy <= "
+        f"{cfg.cst_motion_threshold:.3f}"
+    )
+
+    print(
+        f"Type2 event peak : "
+        f"{cfg.cst_type2_peak_min:.3f} "
+        f"< event_min_dy <= "
+        f"{cfg.cst_type2_peak_max:.3f}"
+    )
+
+    # ========================================================
+    # CST event detection
     # ========================================================
 
     cst_events = (
@@ -1580,14 +2031,8 @@ def main():
         )
     )
 
-    print()
-    print(
-        f"CST UP anchors: "
-        f"{len(cst_events)}"
-    )
-
     # ========================================================
-    # Build Type2
+    # Build Type2 event
     # ========================================================
 
     detected = (
@@ -1598,21 +2043,36 @@ def main():
         )
     )
 
-    detected_df = pd.DataFrame(
-        detected
+    detected_df = (
+        pd.DataFrame(
+            detected
+        )
     )
 
-    # --------------------------------------------------------
-    # Time strings
-    # --------------------------------------------------------
+    # ========================================================
+    # Human-readable timestamps
+    # ========================================================
 
-    if len(detected_df):
+    if len(
+        detected_df
+    ):
 
-        for column in [
+        time_columns = [
+
+            "cst_start_sec",
+
             "cst_peak_sec",
+
+            "cst_end_sec",
+
             "clip_start_sec",
+
             "clip_end_sec",
-        ]:
+        ]
+
+        for column in (
+            time_columns
+        ):
 
             detected_df[
                 column.replace(
@@ -1622,10 +2082,15 @@ def main():
             ] = (
                 detected_df[
                     column
-                ].apply(
+                ]
+                .apply(
                     format_video_time
                 )
             )
+
+    # ========================================================
+    # Save detected events
+    # ========================================================
 
     detected_path = (
         output_dir
@@ -1654,15 +2119,21 @@ def main():
             ]
             ==
             "type_2"
-        ).sum()
+        )
+        .sum()
     )
 
-    comparison, matched_ids = (
-        compare_with_gt(
-            detected_df,
-            gt,
-            cfg,
-        )
+    # ========================================================
+    # Compare GT
+    # ========================================================
+
+    (
+        comparison,
+        matched_detected_indices,
+    ) = compare_with_gt(
+        detected_df,
+        gt,
+        cfg,
     )
 
     comparison_path = (
@@ -1680,42 +2151,129 @@ def main():
     matched_count = int(
         comparison[
             "matched"
-        ].sum()
+        ]
+        .sum()
     )
 
-    false_positive_count = (
-        len(detected_df)
+    detected_count = len(
+        detected_df
+    )
+
+    extra_count = (
+        detected_count
         -
-        len(matched_ids)
+        len(
+            matched_detected_indices
+        )
     )
 
     recall = (
         matched_count
         /
         gt_type2_count
+
         if gt_type2_count
+
         else 0.0
     )
 
     precision = (
-        len(matched_ids)
+        len(
+            matched_detected_indices
+        )
         /
-        len(detected_df)
-        if len(detected_df)
+        detected_count
+
+        if detected_count
+
         else 0.0
     )
 
     # ========================================================
-    # Console result
+    # Boundary statistics
+    # ========================================================
+
+    if detected_count:
+
+        blade_in_found = int(
+            detected_df[
+                "blade_in_start_sec"
+            ]
+            .notna()
+            .sum()
+        )
+
+        blade_out_found = int(
+            detected_df[
+                "blade_out_start_sec"
+            ]
+            .notna()
+            .sum()
+        )
+
+        both_found = int(
+            (
+                detected_df[
+                    "blade_in_start_sec"
+                ]
+                .notna()
+                &
+                detected_df[
+                    "blade_out_start_sec"
+                ]
+                .notna()
+            )
+            .sum()
+        )
+
+        fallback_in = int(
+            (
+                detected_df[
+                    "blade_in_source"
+                ]
+                ==
+                "fallback"
+            )
+            .sum()
+        )
+
+        fallback_out = int(
+            (
+                detected_df[
+                    "blade_out_source"
+                ]
+                ==
+                "fallback"
+            )
+            .sum()
+        )
+
+    else:
+
+        blade_in_found = 0
+
+        blade_out_found = 0
+
+        both_found = 0
+
+        fallback_in = 0
+
+        fallback_out = 0
+
+    # ========================================================
+    # Result
     # ========================================================
 
     print()
+
     print(
         "========================================"
     )
+
     print(
-        "Phase E-3 Detection Result"
+        "Phase E-3 v3 Detection Result"
     )
+
     print(
         "========================================"
     )
@@ -1727,7 +2285,7 @@ def main():
 
     print(
         f"Detected candidates : "
-        f"{len(detected_df)}"
+        f"{detected_count}"
     )
 
     print(
@@ -1742,7 +2300,7 @@ def main():
 
     print(
         f"Extra candidates    : "
-        f"{false_positive_count}"
+        f"{extra_count}"
     )
 
     print(
@@ -1755,57 +2313,181 @@ def main():
         f"{precision:.4f}"
     )
 
-    # --------------------------------------------------------
-    # Sequence completeness
-    # --------------------------------------------------------
+    # ========================================================
+    # Boundary
+    # ========================================================
 
-    if len(detected_df):
+    print()
 
-        blade_in_ok = int(
-            detected_df[
-                "blade_in_start_sec"
-            ].notna().sum()
-        )
+    print(
+        "Sequence boundary"
+    )
 
-        stop_ok = int(
-            detected_df[
-                "cst_stop_start_sec"
-            ].notna().sum()
-        )
+    print(
+        "----------------------------------------"
+    )
 
-        blade_out_ok = int(
-            detected_df[
-                "blade_out_start_sec"
-            ].notna().sum()
-        )
+    print(
+        f"Blade IN found      : "
+        f"{blade_in_found}/"
+        f"{detected_count}"
+    )
+
+    print(
+        f"Blade OUT found     : "
+        f"{blade_out_found}/"
+        f"{detected_count}"
+    )
+
+    print(
+        f"Both found          : "
+        f"{both_found}/"
+        f"{detected_count}"
+    )
+
+    print(
+        f"Blade IN fallback   : "
+        f"{fallback_in}"
+    )
+
+    print(
+        f"Blade OUT fallback  : "
+        f"{fallback_out}"
+    )
+
+    # ========================================================
+    # Detected Type2
+    # ========================================================
+
+    if detected_count:
 
         print()
+
         print(
-            "Sequence detection"
+            "Detected Type2 CST-UP anchors"
         )
+
+        print(
+            "----------------------------------------"
+        )
+
+        for _, row in (
+            detected_df.iterrows()
+        ):
+
+            print(
+                f"#{int(row['event_id']):02d} "
+                f"raw=#{int(row['raw_cst_event_id']):02d} "
+                f"{format_video_time(row['cst_peak_sec'])} "
+                f"dy={row['cst_peak_dy']:.4f} "
+                f"| IN={row['blade_in_source']} "
+                f"| OUT={row['blade_out_source']} "
+                f"| clip={row['clip_duration_sec']:.2f}s"
+            )
+
+    # ========================================================
+    # Missed GT
+    # ========================================================
+
+    missed = (
+        comparison[
+            ~comparison[
+                "matched"
+            ]
+        ]
+    )
+
+    if len(
+        missed
+    ):
+
+        print()
+
+        print(
+            "MISSED Type2"
+        )
+
         print(
             "----------------------------------------"
         )
 
         print(
-            f"Blade IN found       : "
-            f"{blade_in_ok}/"
-            f"{len(detected_df)}"
+            missed[
+                [
+                    "slot",
+                    "gt_start_sec",
+                    "gt_end_sec",
+                ]
+            ]
+            .to_string(
+                index=False
+            )
         )
 
-        print(
-            f"CST STOP found       : "
-            f"{stop_ok}/"
-            f"{len(detected_df)}"
+    # ========================================================
+    # Extra
+    # ========================================================
+
+    if detected_count:
+
+        extra_indices = (
+            set(
+                detected_df.index
+            )
+            -
+            set(
+                matched_detected_indices
+            )
         )
 
-        print(
-            f"Blade OUT found      : "
-            f"{blade_out_ok}/"
-            f"{len(detected_df)}"
-        )
+        if extra_indices:
+
+            print()
+
+            print(
+                "EXTRA candidates"
+            )
+
+            print(
+                "----------------------------------------"
+            )
+
+            extra_df = (
+                detected_df.loc[
+                    sorted(
+                        extra_indices
+                    )
+                ]
+            )
+
+            print(
+                extra_df[
+                    [
+                        "event_id",
+                        "raw_cst_event_id",
+                        "cst_peak_sec",
+                        "cst_peak_dy",
+                    ]
+                ]
+                .to_string(
+                    index=False
+                )
+            )
+
+    # ========================================================
+    # Output
+    # ========================================================
 
     print()
+
+    print(
+        "Output"
+    )
+
+    print(
+        "----------------------------------------"
+    )
+
     print(
         f"Detected CSV : "
         f"{detected_path}"
@@ -1817,18 +2499,19 @@ def main():
     )
 
     # ========================================================
-    # Export clips
+    # Export
     # ========================================================
 
     if (
         not args.no_export
         and
-        len(detected_df)
+        detected_count
     ):
 
         print()
+
         print(
-            "Exporting clips..."
+            "Exporting Type2 clips..."
         )
 
         export_clips(
@@ -1841,8 +2524,19 @@ def main():
             "clips",
         )
 
+        print()
+
         print(
             "Clip export complete."
+        )
+
+    elif args.no_export:
+
+        print()
+
+        print(
+            "[INFO] --no-export: "
+            "clip export skipped."
         )
 
 
