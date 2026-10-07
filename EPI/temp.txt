@@ -1,137 +1,155 @@
-Loading signals...
-Signals : 69,344
-Anchors : 49
-GT      : 49
+Signal rows: 69,344
 
-========================================
-Anchor / GT Matching
-========================================
-Matched anchors : 25/49
-Unmatched anchor : 24
-Unmatched GT     : 24
-
-Matched class distribution
+Type2 CST-UP band
 ----------------------------------------
-type_2    25
-Name: count, dtype: int64
+-8.000 < cst_dy <= -2.000
 
-Match distance min/mean/max : 0.000 / 0.000 / 0.000 sec
+CST UP anchors: 71
 
-Unmatched Anchors
+========================================
+Phase E-3 v2 Detection Result
+========================================
+GT Type2            : 25
+Detected candidates : 71
+Matched Type2       : 25
+Missed Type2        : 0
+Extra candidates    : 46
+Recall              : 1.0000
+Precision           : 0.3521
+
+Sequence boundary
+----------------------------------------
+Blade IN found      : 56/71
+Blade OUT found     : 70/71
+Both found          : 55/71
+Blade IN fallback   : 15
+Blade OUT fallback  : 1
+
+Detected CST-UP anchors
+----------------------------------------
+#01 00:07:37.533 dy=-7.3449 | IN=blade | OUT=blade | clip=1.60s
+#02 00:07:39.200 dy=-7.9397 | IN=blade | OUT=fallback | clip=5.30s
+#03 00:07:53.933 dy=-4.8863 | IN=blade | OUT=blade | clip=3.13s
+#04 00:10:39.067 dy=-7.9252 | IN=blade | OUT=blade | clip=3.47s
+#05 00:10:40.200 dy=-7.9970 | IN=blade | OUT=blade | clip=2.47s
+#06 00:10:55.400 dy=-5.0407 | IN=blade | OUT=blade | clip=3.13s
+#07 00:12:21.733 dy=-6.8823 | IN=fallback | OUT=blade | clip=5.77s
+#08 00:12:23.000 dy=-7.8564 | IN=blade | OUT=blade | clip=2.33s
+#09 00:12:38.200 dy=-5.0781 | IN=blade | OUT=blade | clip=3.13s
+#10 00:13:56.467 dy=-7.1939 | IN=blade | OUT=blade | clip=2.60s
+#11 00:13:57.733 dy=-7.4525 | IN=blade | OUT=blade | clip=2.40s
+#12 00:14:12.867 dy=-4.9653 | IN=blade | OUT=blade | clip=3.20s
+#13 00:18:29.733 dy=-7.8371 | IN=blade | OUT=blade | clip=3.27s
+#14 00:18:31.000 dy=-7.0851 | IN=blade | OUT=blade | clip=2.33s
+#15 00:18:46.200 dy=-4.9984 | IN=blade | OUT=blade | clip=3.20s
+#16 00:20:12.733 dy=-7.5594 | IN=blade | OUT=blade | clip=3.27s
+#17 00:20:14.000 dy=-7.4347 | IN=blade | OUT=blade | clip=2.33s
+#18 00:20:29.133 dy=-4.8754 | IN=blade | OUT=blade | clip=3.20s
+#19 00:21:50.533 dy=-7.8753 | IN=fallback | OUT=blade | clip=5.77s
+#20 00:21:51.733 dy=-7.7924 | IN=blade | OUT=blade | clip=2.40s
+#21 00:22:07.067 dy=-4.9493 | IN=blade | OUT=blade | clip=3.27s
+#22 00:26:21.000 dy=-7.3327 | IN=fallback | OUT=blade | clip=5.70s
+#23 00:26:22.267 dy=-7.5054 | IN=blade | OUT=blade | clip=2.40s
+#24 00:26:37.533 dy=-4.8983 | IN=blade | OUT=blade | clip=3.27s
+#25 00:28:11.267 dy=-7.3006 | IN=fallback | OUT=blade | clip=5.77s
+#26 00:28:12.533 dy=-7.7226 | IN=blade | OUT=blade | clip=2.40s
+#27 00:28:27.800 dy=-4.9776 | IN=blade | OUT=blade | clip=3.13s
+#28 00:29:36.733 dy=-7.5761 | IN=blade | OUT=blade | clip=2.67s
+#29 00:29:37.400 dy=-7.9903 | IN=blade | OUT=blade | clip=2.07s
+#30 00:29:53.133 dy=-4.9656 | IN=blade | OUT=blade | clip=3.27s
+#31 00:34:32.267 dy=-7.8338 | IN=fallback | OUT=blade | clip=5.77s
+#32 00:34:33.533 dy=-7.0842 | IN=blade | OUT=blade | clip=2.40s
+#33 00:34:48.867 dy=-5.1391 | IN=blade | OUT=blade | clip=3.20s
+#34 00:37:52.133 dy=-7.9838 | IN=fallback | OUT=blade | clip=5.70s
+#35 00:37:53.333 dy=-7.8974 | IN=blade | OUT=blade | clip=2.40s
+#36 00:38:08.533 dy=-5.0300 | IN=blade | OUT=blade | clip=3.20s
+#37 00:40:41.400 dy=-7.9659 | IN=fallback | OUT=blade | clip=5.10s
+#38 00:40:42.000 dy=-7.9636 | IN=blade | OUT=blade | clip=2.07s
+#39 00:40:57.867 dy=-5.1397 | IN=blade | OUT=blade | clip=3.33s
+#40 00:43:26.000 dy=-7.5823 | IN=blade | OUT=blade | clip=2.60s
+#41 00:43:26.667 dy=-7.8410 | IN=blade | OUT=blade | clip=2.20s
+#42 00:43:42.400 dy=-5.1372 | IN=blade | OUT=blade | clip=3.27s
+#43 00:49:44.200 dy=-7.0896 | IN=fallback | OUT=blade | clip=6.23s
+#44 00:49:45.933 dy=-7.9166 | IN=blade | OUT=blade | clip=2.00s
+#45 00:50:00.667 dy=-5.0260 | IN=blade | OUT=blade | clip=3.20s
+#46 00:51:41.667 dy=-7.8266 | IN=fallback | OUT=blade | clip=6.23s
+#47 00:51:43.333 dy=-7.6431 | IN=blade | OUT=blade | clip=2.07s
+#48 00:51:58.000 dy=-4.9188 | IN=blade | OUT=blade | clip=3.20s
+#49 00:53:19.200 dy=-6.9716 | IN=fallback | OUT=blade | clip=6.23s
+#50 00:53:20.933 dy=-7.9702 | IN=blade | OUT=blade | clip=2.13s
+#51 00:53:35.800 dy=-5.0425 | IN=blade | OUT=blade | clip=3.20s
+#52 00:56:02.400 dy=-6.9629 | IN=fallback | OUT=blade | clip=6.23s
+#53 00:56:04.200 dy=-7.2500 | IN=blade | OUT=blade | clip=2.00s
+#54 00:56:18.933 dy=-5.0024 | IN=blade | OUT=blade | clip=3.33s
+#55 00:57:59.267 dy=-6.9369 | IN=fallback | OUT=blade | clip=4.70s
+#56 00:58:01.000 dy=-7.9823 | IN=blade | OUT=blade | clip=2.00s
+#57 00:58:15.733 dy=-4.9075 | IN=blade | OUT=blade | clip=3.20s
+#58 00:59:40.333 dy=-7.8692 | IN=fallback | OUT=blade | clip=6.30s
+#59 00:59:42.000 dy=-7.9875 | IN=blade | OUT=blade | clip=1.80s
+#60 00:59:56.800 dy=-5.1863 | IN=blade | OUT=blade | clip=3.20s
+#61 01:02:10.600 dy=-6.9009 | IN=fallback | OUT=blade | clip=5.97s
+#62 01:02:11.867 dy=-7.9287 | IN=blade | OUT=blade | clip=1.93s
+#63 01:02:27.133 dy=-5.1344 | IN=blade | OUT=blade | clip=3.20s
+#64 01:04:15.867 dy=-7.4750 | IN=blade | OUT=blade | clip=1.73s
+#65 01:04:17.133 dy=-7.4545 | IN=blade | OUT=blade | clip=3.27s
+#66 01:04:32.267 dy=-5.0546 | IN=blade | OUT=blade | clip=3.20s
+#67 01:06:35.133 dy=-7.8204 | IN=fallback | OUT=blade | clip=4.63s
+#68 01:06:36.000 dy=-7.6041 | IN=blade | OUT=blade | clip=2.60s
+#69 01:06:51.467 dy=-5.1066 | IN=blade | OUT=blade | clip=3.47s
+#70 01:10:40.000 dy=-5.0865 | IN=blade | OUT=blade | clip=3.47s
+#71 01:12:26.600 dy=-5.1283 | IN=blade | OUT=blade | clip=3.53s
+
+EXTRA candidates
 ----------------------------------------
  event_id  cst_peak_sec  cst_peak_dy
-        1    458.400000   -16.683708
-        3    639.600000   -14.163990
-        5    742.400000   -14.085136
-        7    837.133333   -14.145279
-        9   1110.333333   -14.016061
-       11   1213.333333   -14.016958
-       13   1311.066667   -14.007323
-       15   1581.600000   -14.056664
-       17   1691.933333   -13.945574
-       19   1777.066667   -10.862792
-       21   2072.866667   -14.048063
-       23   2272.733333   -14.059735
-       25   2441.733333   -10.938613
-       27   2606.333333   -10.948598
-       29   2985.066667   -16.744918
-       31   3102.466667   -16.607702
-       33   3200.066667   -16.596547
-       35   3363.266667   -16.740437
-       37   3480.133333   -16.839171
-       39   3581.133333   -16.623980
-       41   3731.266667   -13.995930
-       43   3856.533333   -14.252962
-       45   3995.533333   -12.255809
-       49   4619.333333   -31.205525
-
-Unmatched GT
-----------------------------------------
-  type  slot start_sec  end_sec
-type_1     2     03:45    03:50
-type_1     3     05:20    05:25
-type_1     4     06:56    07:01
-type_1     5     11:40    11:45
-type_1     6     13:15    13:20
-type_1     7     14:18    14:22
-type_1     8     19:31    19:35
-type_1     9     21:06    21:11
-type_1    10     22:12    22:16
-type_1    11     27:28    27:32
-type_1    12     30:21    30:25
-type_1    13     33:49    33:53
-type_1    14     36:04    36:08
-type_1    15     42:44    42:48
-type_1    16     44:20    44:24
-type_1    17     45:03    45:07
-type_1    18     49:03    49:06
-type_1    19     51:00    51:04
-type_1    20     52:36    52:39
-type_1    21     55:21    55:25
-type_1    22     57:18    57:21
-type_1    23     58:57    59:01
-type_1    24  01:03:35 01:03:38
-type_1    25  01:05:18 01:05:22
-
-Class distribution
-----------------------------------------
-type
-type_2    25
-Name: count, dtype: int64
-
-Searching single rules...
-Searching two-rule combinations...
-
-========================================
-Calibration Result
-========================================
-
-BEST SINGLE RULE
-----------------------------------------
-cst_anchor_peak_dy >= -5.18625804
-TP=25 TN=0 FP=0 FN=0
-Recall    = 1.0000
-Precision = 1.0000
-
-BEST TWO-RULE
-----------------------------------------
-cst_anchor_peak_dy >= -5.18625804
-AND
-cst_dy_min >= -5.18625804
-TP=25 TN=0 FP=0 FN=0
-Recall    = 1.0000
-Precision = 1.0000
-
-Top 10 Single Rules
-----------------------------------------
-           feature op  threshold  tp  tn  fp  fn  recall  precision
-cst_anchor_peak_dy >=  -5.186258  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy <=  -4.875354  25   0   0   0     1.0        1.0
-        cst_dy_min >=  -5.186258  25   0   0   0     1.0        1.0
-        cst_dy_min <=  -4.875354  25   0   0   0     1.0        1.0
-        cst_dy_max >=   0.637735  25   0   0   0     1.0        1.0
-        cst_dy_max <=  15.875188  25   0   0   0     1.0        1.0
-       cst_abs_max >=   5.086483  25   0   0   0     1.0        1.0
-       cst_abs_max <=  15.875188  25   0   0   0     1.0        1.0
-      cst_abs_mean >=   0.806638  25   0   0   0     1.0        1.0
-      cst_abs_mean <=   2.607984  25   0   0   0     1.0        1.0
-
-Top 10 Two-Rules
-----------------------------------------
-          feature1 op1  threshold1           feature2 op2  threshold2  tp  tn  fp  fn  recall  precision
-cst_anchor_peak_dy  >=   -5.186258         cst_dy_min  >=   -5.186258  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258         cst_dy_max  >=    0.637735  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258        cst_abs_max  >=    5.086483  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258       cst_abs_mean  >=    0.806638  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258        cst_abs_p90  >=    1.385523  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258        cst_abs_p95  >=    3.356634  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258     cst_phase_mean  >=    0.906055  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258      cst_phase_p50  >=    0.906261  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258  blade1_motion_max  >=    0.190775  25   0   0   0     1.0        1.0
-cst_anchor_peak_dy  >=   -5.186258 blade1_motion_mean  >=    0.032883  25   0   0   0     1.0        1.0
+        1    457.533333    -7.344894
+        2    459.200000    -7.939698
+        4    639.066667    -7.925164
+        5    640.200000    -7.997041
+        7    741.733333    -6.882273
+        8    743.000000    -7.856431
+       10    836.466667    -7.193892
+       11    837.733333    -7.452511
+       13   1109.733333    -7.837063
+       14   1111.000000    -7.085109
+       16   1212.733333    -7.559401
+       17   1214.000000    -7.434730
+       19   1310.533333    -7.875309
+       20   1311.733333    -7.792381
+       22   1581.000000    -7.332729
+       23   1582.266667    -7.505419
+       25   1691.266667    -7.300607
+       26   1692.533333    -7.722596
+       28   1776.733333    -7.576088
+       29   1777.400000    -7.990294
+       31   2072.266667    -7.833768
+       32   2073.533333    -7.084228
+       34   2272.133333    -7.983849
+       35   2273.333333    -7.897426
+       37   2441.400000    -7.965919
+       38   2442.000000    -7.963611
+       40   2606.000000    -7.582295
+       41   2606.666667    -7.840972
+       43   2984.200000    -7.089640
+       44   2985.933333    -7.916639
+       46   3101.666667    -7.826646
+       47   3103.333333    -7.643149
+       49   3199.200000    -6.971646
+       50   3200.933333    -7.970177
+       52   3362.400000    -6.962869
+       53   3364.200000    -7.249982
+       55   3479.266667    -6.936880
+       56   3481.000000    -7.982287
+       58   3580.333333    -7.869166
+       59   3582.000000    -7.987506
+       61   3730.600000    -6.900903
+       62   3731.866667    -7.928678
+       64   3855.866667    -7.475019
+       65   3857.133333    -7.454459
+       67   3995.133333    -7.820392
+       68   3996.000000    -7.604114
 
 Output
 ----------------------------------------
-output\04_calibrate_anchor_classifier\anchor_features.csv
-output\04_calibrate_anchor_classifier\single_rule_results.csv
-output\04_calibrate_anchor_classifier\two_rule_results.csv
+Detected CSV : output\03_extract_clips\detected_events.csv
+GT comparison: output\03_extract_clips\gt_comparison.csv
