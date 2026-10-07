@@ -1,0 +1,74 @@
+Loading signals...
+Signals : 69,344
+Anchors : 49
+GT      : 49
+
+========================================
+Anchor / GT Matching
+========================================
+Matched anchors : 25/49
+Unmatched anchor : 24
+Unmatched GT     : 24
+
+Class distribution
+----------------------------------------
+type
+type_2    25
+Name: count, dtype: int64
+
+Searching single rules...
+Searching two-rule combinations...
+
+========================================
+Calibration Result
+========================================
+
+BEST SINGLE RULE
+----------------------------------------
+cst_anchor_peak_dy >= -5.18625804
+TP=25 TN=0 FP=0 FN=0
+Recall    = 1.0000
+Precision = 1.0000
+
+BEST TWO-RULE
+----------------------------------------
+cst_anchor_peak_dy >= -5.18625804
+AND
+cst_dy_min >= -5.18625804
+TP=25 TN=0 FP=0 FN=0
+Recall    = 1.0000
+Precision = 1.0000
+
+Top 10 Single Rules
+----------------------------------------
+           feature op  threshold  tp  tn  fp  fn  recall  precision
+cst_anchor_peak_dy >=  -5.186258  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy <=  -4.875354  25   0   0   0     1.0        1.0
+        cst_dy_min >=  -5.186258  25   0   0   0     1.0        1.0
+        cst_dy_min <=  -4.875354  25   0   0   0     1.0        1.0
+        cst_dy_max >=   0.637735  25   0   0   0     1.0        1.0
+        cst_dy_max <=  15.875188  25   0   0   0     1.0        1.0
+       cst_abs_max >=   5.086483  25   0   0   0     1.0        1.0
+       cst_abs_max <=  15.875188  25   0   0   0     1.0        1.0
+      cst_abs_mean >=   0.806638  25   0   0   0     1.0        1.0
+      cst_abs_mean <=   2.607984  25   0   0   0     1.0        1.0
+
+Top 10 Two-Rules
+----------------------------------------
+          feature1 op1  threshold1           feature2 op2  threshold2  tp  tn  fp  fn  recall  precision
+cst_anchor_peak_dy  >=   -5.186258         cst_dy_min  >=   -5.186258  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258         cst_dy_max  >=    0.637735  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258        cst_abs_max  >=    5.086483  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258       cst_abs_mean  >=    0.806638  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258        cst_abs_p90  >=    1.385523  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258        cst_abs_p95  >=    3.356634  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258     cst_phase_mean  >=    0.906055  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258      cst_phase_p50  >=    0.906261  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258  blade1_motion_max  >=    0.190775  25   0   0   0     1.0        1.0
+cst_anchor_peak_dy  >=   -5.186258 blade1_motion_mean  >=    0.032883  25   0   0   0     1.0        1.0
+
+Output
+----------------------------------------
+output\04_calibrate_anchor_classifier\anchor_features.csv
+output\04_calibrate_anchor_classifier\single_rule_results.csv
+output\04_calibrate_anchor_classifier\two_rule_results.csv
