@@ -1,154 +1,123 @@
-def match_anchors_to_gt(
-    anchors,
-    gt,
-    cfg,
-):
-    """
-    GT event와 CST anchor를 timestamp 기준으로 1:1 매칭한다.
+# ========================================================
+# Matching diagnostics
+# ========================================================
 
-    중요:
-    GT start/end는 Blade motion 기준이고,
-    CST anchor는 CST movement 기준이므로
-    anchor가 반드시 GT start~end 내부에 있을 필요는 없다.
+print()
+print(
+    "Matched class distribution"
+)
+print(
+    "----------------------------------------"
+)
 
-    Matching distance:
-        anchor_time과 GT interval 사이의 거리
+matched_types = []
+matched_distances = []
 
-    anchor가 GT interval 내부:
-        distance = 0
+for anchor_idx, (
+    gt_idx,
+    distance,
+) in matches.items():
 
-    anchor가 GT 이전:
-        distance = gt_start - anchor_time
-
-    anchor가 GT 이후:
-        distance = anchor_time - gt_end
-
-    이후 전체 candidate를 distance가 가까운 순서로
-    greedy 1:1 matching한다.
-    """
-
-    candidates = []
-
-    for anchor_idx, anchor in anchors.iterrows():
-
-        anchor_time = float(
-            anchor["cst_peak_sec"]
-        )
-
-        for gt_idx, gt_row in gt.iterrows():
-
-            gt_start = float(
-                gt_row["gt_start_sec"]
-            )
-
-            gt_end = float(
-                gt_row["gt_end_sec"]
-            )
-
-            # --------------------------------------------
-            # anchor ↔ GT interval distance
-            # --------------------------------------------
-
-            if (
-                gt_start
-                <= anchor_time
-                <= gt_end
-            ):
-
-                distance = 0.0
-
-            elif anchor_time < gt_start:
-
-                distance = (
-                    gt_start
-                    - anchor_time
-                )
-
-            else:
-
-                distance = (
-                    anchor_time
-                    - gt_end
-                )
-
-            # 너무 멀리 떨어진 event는 제외
-            if (
-                distance
-                >
-                cfg.gt_match_margin_sec
-            ):
-                continue
-
-            candidates.append({
-
-                "distance":
-                    distance,
-
-                "anchor_idx":
-                    anchor_idx,
-
-                "gt_idx":
-                    gt_idx,
-
-                "anchor_time":
-                    anchor_time,
-
-                "gt_start":
-                    gt_start,
-
-                "gt_end":
-                    gt_end,
-
-                "type":
-                    gt_row["type"],
-            })
-
-    # 가까운 순서
-    candidates.sort(
-        key=lambda x:
-            x["distance"]
+    matched_types.append(
+        gt.loc[
+            gt_idx,
+            "type"
+        ]
     )
 
-    used_anchors = set()
-    used_gt = set()
+    matched_distances.append(
+        distance
+    )
 
-    matches = {}
+print(
+    pd.Series(
+        matched_types
+    ).value_counts()
+)
 
-    for candidate in candidates:
+if matched_distances:
 
-        anchor_idx = (
-            candidate[
-                "anchor_idx"
+    print()
+    print(
+        f"Match distance "
+        f"min/mean/max : "
+        f"{np.min(matched_distances):.3f} / "
+        f"{np.mean(matched_distances):.3f} / "
+        f"{np.max(matched_distances):.3f} sec"
+    )
+
+
+# ========================================================
+# Unmatched diagnostics
+# ========================================================
+
+matched_anchor_indices = set(
+    matches.keys()
+)
+
+matched_gt_indices = set(
+    gt_idx
+    for gt_idx, _
+    in matches.values()
+)
+
+unmatched_anchors = (
+    anchors[
+        ~anchors.index.isin(
+            matched_anchor_indices
+        )
+    ]
+)
+
+unmatched_gt = (
+    gt[
+        ~gt.index.isin(
+            matched_gt_indices
+        )
+    ]
+)
+
+if len(unmatched_anchors):
+
+    print()
+    print(
+        "Unmatched Anchors"
+    )
+    print(
+        "----------------------------------------"
+    )
+
+    print(
+        unmatched_anchors[
+            [
+                "event_id",
+                "cst_peak_sec",
+                "cst_peak_dy",
             ]
+        ].to_string(
+            index=False
         )
+    )
 
-        gt_idx = (
-            candidate[
-                "gt_idx"
+if len(unmatched_gt):
+
+    print()
+    print(
+        "Unmatched GT"
+    )
+    print(
+        "----------------------------------------"
+    )
+
+    print(
+        unmatched_gt[
+            [
+                "type",
+                "slot",
+                "start_sec",
+                "end_sec",
             ]
+        ].to_string(
+            index=False
         )
-
-        if anchor_idx in used_anchors:
-            continue
-
-        if gt_idx in used_gt:
-            continue
-
-        matches[
-            anchor_idx
-        ] = (
-            gt_idx,
-            candidate[
-                "distance"
-            ],
-        )
-
-        used_anchors.add(
-            anchor_idx
-        )
-
-        used_gt.add(
-            gt_idx
-        )
-
-    return matches
+    )
