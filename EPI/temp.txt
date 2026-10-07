@@ -1,148 +1,117 @@
-Type2 CST-UP band
-----------------------------------------
--6.000 < cst_dy <= -4.000
+Loading motion signals...
+Signal rows: 69,344
 
-CST UP anchors: 71
+CST detection
+----------------------------------------
+Motion threshold : cst_dy <= -2.000
+Type2 event peak : -8.000 < event_min_dy <= -2.000
+
+Raw CST movement events: 49
+
+Raw CST movement peaks
+----------------------------------------
+#01 00:07:38.400 dy=-16.6837 [REJECT]
+#02 00:07:53.933 dy=-4.8863 [TYPE2]
+#03 00:10:39.600 dy=-14.1640 [REJECT]
+#04 00:10:55.400 dy=-5.0407 [TYPE2]
+#05 00:12:22.400 dy=-14.0851 [REJECT]
+#06 00:12:38.200 dy=-5.0781 [TYPE2]
+#07 00:13:57.133 dy=-14.1453 [REJECT]
+#08 00:14:12.867 dy=-4.9653 [TYPE2]
+#09 00:18:30.333 dy=-14.0161 [REJECT]
+#10 00:18:46.200 dy=-4.9984 [TYPE2]
+#11 00:20:13.333 dy=-14.0170 [REJECT]
+#12 00:20:29.133 dy=-4.8754 [TYPE2]
+#13 00:21:51.067 dy=-14.0073 [REJECT]
+#14 00:22:07.067 dy=-4.9493 [TYPE2]
+#15 00:26:21.600 dy=-14.0567 [REJECT]
+#16 00:26:37.533 dy=-4.8983 [TYPE2]
+#17 00:28:11.933 dy=-13.9456 [REJECT]
+#18 00:28:27.800 dy=-4.9776 [TYPE2]
+#19 00:29:37.067 dy=-10.8628 [REJECT]
+#20 00:29:53.133 dy=-4.9656 [TYPE2]
+#21 00:34:32.867 dy=-14.0481 [REJECT]
+#22 00:34:48.867 dy=-5.1391 [TYPE2]
+#23 00:37:52.733 dy=-14.0597 [REJECT]
+#24 00:38:08.533 dy=-5.0300 [TYPE2]
+#25 00:40:41.733 dy=-10.9386 [REJECT]
+#26 00:40:57.867 dy=-5.1397 [TYPE2]
+#27 00:43:26.333 dy=-10.9486 [REJECT]
+#28 00:43:42.400 dy=-5.1372 [TYPE2]
+#29 00:49:45.067 dy=-16.7449 [REJECT]
+#30 00:50:00.667 dy=-5.0260 [TYPE2]
+#31 00:51:42.467 dy=-16.6077 [REJECT]
+#32 00:51:58.000 dy=-4.9188 [TYPE2]
+#33 00:53:20.067 dy=-16.5965 [REJECT]
+#34 00:53:35.800 dy=-5.0425 [TYPE2]
+#35 00:56:03.267 dy=-16.7404 [REJECT]
+#36 00:56:18.933 dy=-5.0024 [TYPE2]
+#37 00:58:00.133 dy=-16.8392 [REJECT]
+#38 00:58:15.733 dy=-4.9075 [TYPE2]
+#39 00:59:41.133 dy=-16.6240 [REJECT]
+#40 00:59:56.800 dy=-5.1863 [TYPE2]
+#41 01:02:11.267 dy=-13.9959 [REJECT]
+#42 01:02:27.133 dy=-5.1344 [TYPE2]
+#43 01:04:16.533 dy=-14.2530 [REJECT]
+#44 01:04:32.267 dy=-5.0546 [TYPE2]
+#45 01:06:35.533 dy=-12.2558 [REJECT]
+#46 01:06:51.467 dy=-5.1066 [TYPE2]
+#47 01:10:40.000 dy=-5.0865 [TYPE2]
+#48 01:12:26.600 dy=-5.1283 [TYPE2]
+#49 01:16:59.333 dy=-31.2055 [REJECT]
+
+Type2 CST-UP anchors: 25
 
 ========================================
-Phase E-3 v2 Detection Result
+Phase E-3 v3 Detection Result
 ========================================
 GT Type2            : 25
-Detected candidates : 71
+Detected candidates : 25
 Matched Type2       : 25
 Missed Type2        : 0
-Extra candidates    : 46
+Extra candidates    : 0
 Recall              : 1.0000
-Precision           : 0.3521
+Precision           : 1.0000
 
 Sequence boundary
 ----------------------------------------
-Blade IN found      : 71/71
-Blade OUT found     : 71/71
-Both found          : 71/71
+Blade IN found      : 25/25
+Blade OUT found     : 25/25
+Both found          : 25/25
 Blade IN fallback   : 0
 Blade OUT fallback  : 0
 
-Detected CST-UP anchors
+Detected Type2 CST-UP anchors
 ----------------------------------------
-#01 00:07:37.400 dy=-5.8162 | IN=blade | OUT=blade | clip=1.53s
-#02 00:07:39.467 dy=-5.0742 | IN=blade | OUT=blade | clip=1.33s
-#03 00:07:53.933 dy=-4.8863 | IN=blade | OUT=blade | clip=3.13s
-#04 00:10:38.800 dy=-5.1133 | IN=blade | OUT=blade | clip=3.47s
-#05 00:10:40.400 dy=-5.8838 | IN=blade | OUT=blade | clip=2.40s
-#06 00:10:55.400 dy=-5.0407 | IN=blade | OUT=blade | clip=3.07s
-#07 00:12:21.600 dy=-5.8156 | IN=blade | OUT=blade | clip=3.27s
-#08 00:12:23.200 dy=-5.6737 | IN=blade | OUT=blade | clip=2.00s
-#09 00:12:38.200 dy=-5.0781 | IN=blade | OUT=blade | clip=3.07s
-#10 00:13:56.267 dy=-5.1195 | IN=blade | OUT=blade | clip=2.60s
-#11 00:13:57.867 dy=-5.9643 | IN=blade | OUT=blade | clip=2.13s
-#12 00:14:12.867 dy=-4.9653 | IN=blade | OUT=blade | clip=3.20s
-#13 00:18:29.533 dy=-5.4035 | IN=blade | OUT=blade | clip=3.27s
-#14 00:18:31.133 dy=-5.9156 | IN=blade | OUT=blade | clip=2.00s
-#15 00:18:46.200 dy=-4.9984 | IN=blade | OUT=blade | clip=3.20s
-#16 00:20:12.600 dy=-5.9384 | IN=blade | OUT=blade | clip=3.27s
-#17 00:20:14.200 dy=-5.1968 | IN=blade | OUT=blade | clip=2.00s
-#18 00:20:29.133 dy=-4.8754 | IN=blade | OUT=blade | clip=3.20s
-#19 00:21:50.333 dy=-5.7093 | IN=blade | OUT=blade | clip=3.27s
-#20 00:21:51.933 dy=-5.3496 | IN=blade | OUT=blade | clip=2.00s
-#21 00:22:07.067 dy=-4.9493 | IN=blade | OUT=blade | clip=3.20s
-#22 00:26:20.800 dy=-4.9228 | IN=blade | OUT=blade | clip=3.20s
-#23 00:26:22.400 dy=-5.9885 | IN=blade | OUT=blade | clip=2.00s
-#24 00:26:37.533 dy=-4.8983 | IN=blade | OUT=blade | clip=3.27s
-#25 00:28:11.067 dy=-5.0050 | IN=blade | OUT=blade | clip=3.27s
-#26 00:28:12.667 dy=-5.8298 | IN=blade | OUT=blade | clip=2.00s
-#27 00:28:27.800 dy=-4.9776 | IN=blade | OUT=blade | clip=3.07s
-#28 00:29:36.533 dy=-5.2554 | IN=blade | OUT=blade | clip=2.67s
-#29 00:29:37.600 dy=-5.6690 | IN=blade | OUT=blade | clip=2.07s
-#30 00:29:53.133 dy=-4.9656 | IN=blade | OUT=blade | clip=3.27s
-#31 00:34:32.067 dy=-5.4946 | IN=blade | OUT=blade | clip=3.27s
-#32 00:34:33.667 dy=-5.8658 | IN=blade | OUT=blade | clip=2.00s
-#33 00:34:48.867 dy=-5.1391 | IN=blade | OUT=blade | clip=3.20s
-#34 00:37:51.933 dy=-5.7879 | IN=blade | OUT=blade | clip=3.20s
-#35 00:37:53.533 dy=-5.6719 | IN=blade | OUT=blade | clip=2.00s
-#36 00:38:08.533 dy=-5.0300 | IN=blade | OUT=blade | clip=3.20s
-#37 00:40:41.200 dy=-5.6536 | IN=blade | OUT=blade | clip=2.60s
-#38 00:40:42.267 dy=-5.0989 | IN=blade | OUT=blade | clip=2.07s
-#39 00:40:57.867 dy=-5.1397 | IN=blade | OUT=blade | clip=2.07s
-#40 00:43:25.800 dy=-5.3119 | IN=blade | OUT=blade | clip=2.60s
-#41 00:43:26.867 dy=-5.5279 | IN=blade | OUT=blade | clip=2.13s
-#42 00:43:42.400 dy=-5.1372 | IN=blade | OUT=blade | clip=3.27s
-#43 00:49:44.000 dy=-5.1340 | IN=blade | OUT=blade | clip=3.73s
-#44 00:49:46.133 dy=-5.6152 | IN=blade | OUT=blade | clip=2.00s
-#45 00:50:00.667 dy=-5.0260 | IN=blade | OUT=blade | clip=3.20s
-#46 00:51:41.400 dy=-4.7776 | IN=blade | OUT=blade | clip=3.73s
-#47 00:51:43.533 dy=-5.4875 | IN=blade | OUT=blade | clip=2.00s
-#48 00:51:58.000 dy=-4.9188 | IN=blade | OUT=blade | clip=3.20s
-#49 00:53:19.067 dy=-5.8783 | IN=blade | OUT=blade | clip=3.73s
-#50 00:53:21.133 dy=-5.8043 | IN=blade | OUT=blade | clip=2.00s
-#51 00:53:35.800 dy=-5.0425 | IN=blade | OUT=blade | clip=3.20s
-#52 00:56:02.267 dy=-5.7491 | IN=blade | OUT=blade | clip=3.73s
-#53 00:56:04.333 dy=-5.6863 | IN=blade | OUT=blade | clip=2.00s
-#54 00:56:18.933 dy=-5.0024 | IN=blade | OUT=blade | clip=3.27s
-#55 00:57:59.133 dy=-5.9735 | IN=blade | OUT=blade | clip=2.20s
-#56 00:58:01.200 dy=-5.6097 | IN=blade | OUT=blade | clip=1.87s
-#57 00:58:15.733 dy=-4.9075 | IN=blade | OUT=blade | clip=3.20s
-#58 00:59:40.133 dy=-5.9560 | IN=blade | OUT=blade | clip=3.80s
-#59 00:59:42.200 dy=-5.7851 | IN=blade | OUT=blade | clip=1.80s
-#60 00:59:56.800 dy=-5.1863 | IN=blade | OUT=blade | clip=3.20s
-#61 01:02:10.467 dy=-5.6511 | IN=blade | OUT=blade | clip=3.47s
-#62 01:02:12.067 dy=-5.8017 | IN=blade | OUT=blade | clip=1.93s
-#63 01:02:27.133 dy=-5.1344 | IN=blade | OUT=blade | clip=2.07s
-#64 01:04:15.733 dy=-5.9579 | IN=blade | OUT=blade | clip=1.73s
-#65 01:04:17.267 dy=-5.9157 | IN=blade | OUT=blade | clip=3.27s
-#66 01:04:32.267 dy=-5.0546 | IN=blade | OUT=blade | clip=3.13s
-#67 01:06:34.933 dy=-5.8700 | IN=blade | OUT=blade | clip=2.00s
-#68 01:06:36.200 dy=-5.3445 | IN=blade | OUT=blade | clip=2.60s
-#69 01:06:51.467 dy=-5.1066 | IN=blade | OUT=blade | clip=1.33s
-#70 01:10:40.000 dy=-5.0865 | IN=blade | OUT=blade | clip=2.40s
-#71 01:12:26.600 dy=-5.1283 | IN=blade | OUT=blade | clip=3.53s
+#01 raw=#02 00:07:53.933 dy=-4.8863 | IN=blade | OUT=blade | clip=3.13s
+#02 raw=#04 00:10:55.400 dy=-5.0407 | IN=blade | OUT=blade | clip=3.13s
+#03 raw=#06 00:12:38.200 dy=-5.0781 | IN=blade | OUT=blade | clip=3.13s
+#04 raw=#08 00:14:12.867 dy=-4.9653 | IN=blade | OUT=blade | clip=3.20s
+#05 raw=#10 00:18:46.200 dy=-4.9984 | IN=blade | OUT=blade | clip=3.20s
+#06 raw=#12 00:20:29.133 dy=-4.8754 | IN=blade | OUT=blade | clip=3.20s
+#07 raw=#14 00:22:07.067 dy=-4.9493 | IN=blade | OUT=blade | clip=3.27s
+#08 raw=#16 00:26:37.533 dy=-4.8983 | IN=blade | OUT=blade | clip=3.27s
+#09 raw=#18 00:28:27.800 dy=-4.9776 | IN=blade | OUT=blade | clip=3.13s
+#10 raw=#20 00:29:53.133 dy=-4.9656 | IN=blade | OUT=blade | clip=3.27s
+#11 raw=#22 00:34:48.867 dy=-5.1391 | IN=blade | OUT=blade | clip=3.20s
+#12 raw=#24 00:38:08.533 dy=-5.0300 | IN=blade | OUT=blade | clip=3.20s
+#13 raw=#26 00:40:57.867 dy=-5.1397 | IN=blade | OUT=blade | clip=3.33s
+#14 raw=#28 00:43:42.400 dy=-5.1372 | IN=blade | OUT=blade | clip=3.27s
+#15 raw=#30 00:50:00.667 dy=-5.0260 | IN=blade | OUT=blade | clip=3.20s
+#16 raw=#32 00:51:58.000 dy=-4.9188 | IN=blade | OUT=blade | clip=3.20s
+#17 raw=#34 00:53:35.800 dy=-5.0425 | IN=blade | OUT=blade | clip=3.20s
+#18 raw=#36 00:56:18.933 dy=-5.0024 | IN=blade | OUT=blade | clip=3.33s
+#19 raw=#38 00:58:15.733 dy=-4.9075 | IN=blade | OUT=blade | clip=3.20s
+#20 raw=#40 00:59:56.800 dy=-5.1863 | IN=blade | OUT=blade | clip=3.20s
+#21 raw=#42 01:02:27.133 dy=-5.1344 | IN=blade | OUT=blade | clip=3.20s
+#22 raw=#44 01:04:32.267 dy=-5.0546 | IN=blade | OUT=blade | clip=3.20s
+#23 raw=#46 01:06:51.467 dy=-5.1066 | IN=blade | OUT=blade | clip=3.47s
+#24 raw=#47 01:10:40.000 dy=-5.0865 | IN=blade | OUT=blade | clip=3.47s
+#25 raw=#48 01:12:26.600 dy=-5.1283 | IN=blade | OUT=blade | clip=3.53s
 
-EXTRA candidates
+Output
 ----------------------------------------
- event_id  cst_peak_sec  cst_peak_dy
-        1    457.400000    -5.816168
-        2    459.466667    -5.074168
-        4    638.800000    -5.113255
-        5    640.400000    -5.883799
-        7    741.600000    -5.815593
-        8    743.200000    -5.673686
-       10    836.266667    -5.119527
-       11    837.866667    -5.964319
-       13   1109.533333    -5.403501
-       14   1111.133333    -5.915594
-       16   1212.600000    -5.938415
-       17   1214.200000    -5.196775
-       19   1310.333333    -5.709284
-       20   1311.933333    -5.349593
-       22   1580.800000    -4.922830
-       23   1582.400000    -5.988460
-       25   1691.066667    -5.005007
-       26   1692.666667    -5.829757
-       28   1776.533333    -5.255354
-       29   1777.600000    -5.669031
-       31   2072.066667    -5.494558
-       32   2073.666667    -5.865812
-       34   2271.933333    -5.787857
-       35   2273.533333    -5.671860
-       37   2441.200000    -5.653588
-       38   2442.266667    -5.098944
-       40   2605.800000    -5.311887
-       41   2606.866667    -5.527892
-       43   2984.000000    -5.133958
-       44   2986.133333    -5.615191
-       46   3101.400000    -4.777644
-       47   3103.533333    -5.487468
-       49   3199.066667    -5.878320
-       50   3201.133333    -5.804288
-       52   3362.266667    -5.749092
-       53   3364.333333    -5.686253
-       55   3479.133333    -5.973545
-       56   3481.200000    -5.609652
-       58   3580.133333    -5.955968
-       59   3582.200000    -5.785075
-       61   3730.466667    -5.651055
-       62   3732.066667    -5.801700
-       64   3855.733333    -5.957944
-       65   3857.266667    -5.915659
-       67   3994.933333    -5.869991
-       68   3996.200000    -5.344453
+Detected CSV : output\03_extract_clips\detected_events.csv
+GT comparison: output\03_extract_clips\gt_comparison.csv
+
+[INFO] --no-export: clip export skipped.
