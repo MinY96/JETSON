@@ -1,93 +1,184 @@
 """
-phase_e3_calibrate_anchor_classifier.py
+phase_e3_extract_type2_clips.py
 
-Purpose
--------
-Phase E-3에서 검출한 CST anchor들을 Ground Truth와 매칭하고,
-각 anchor 주변의 motion signal feature를 추출하여
+Phase E-3 v2
+============
 
-    Type1 vs Type2
+목적
+----
+Phase E-1에서 생성한 motion_signals.csv를 이용하여
+원본 장시간 CCTV 영상에서 Type2 이벤트를 자동 검출하고
+Phase A에서 사용할 표준 Type2 clip을 추출한다.
 
-분류에 가장 적합한 threshold rule을 자동 탐색한다.
+Type2 실제 sequence
+-------------------
+1. 작업 완료 wafer를 Blade가 CST로 가지고 옴
+2. Blade가 끝까지 들어옴
+3. CST가 wafer 홈 안착을 위해 살짝 상승
+4. wafer가 CST 홈에 안착
+5. CST 상승 종료
+6. 잠시 정지
+7. Blade OUT
+
+Phase E-3에서는 정확한 STOP/측정 시점까지 찾지 않는다.
+
+검출 구조
+---------
+Blade IN
+   ↓
+Type2 CST-UP anchor
+   ↓
+Blade OUT
+
+CST STOP 및 정확한 measurement frame 검출은
+다음 Phase A에서 수행한다.
+
+중요한 실험 결과
+----------------
+전체 CST-UP candidate 49개를 분석한 결과:
+
+Type2 target CST-UP:
+    약 -4.875 ~ -5.186
+
+다른 큰 CST movement:
+    약 -10.86 이하
+    일부 -14, -16, -31 수준
+
+따라서 Type2 CST-UP을 다음 band로 검출:
+
+    -8.0 < cst_dy <= -2.0
+
+Blade ROI:
+    blade2 = (309, 379, 1593, 236)
+
+Blade signal은 Type2 분류용이 아니라
+clip start/end boundary 탐색용으로만 사용한다.
 
 Input
 -----
-1. motion_signals.csv
-2. blade_in_out_timestamp.xlsx
-3. detected_events.csv
-   - phase_e3_extract_type2_clips.py --no-export 결과
+motion_signals.csv
+blade_in_out_timestamp.xlsx
+original.mp4
 
 Output
 ------
-phase_e3_anchor_calibration/
-    anchor_features.csv
-    single_rule_results.csv
-    two_rule_results.csv
-    best_rules.csv
-
-Optimization priority
----------------------
-1. Type2 Recall = 1.0
-2. Precision 최대
-3. False Positive 최소
-4. Rule 단순성
+output/
+    detected_events.csv
+    gt_comparison.csv
+    clips/
+        type2_001.mp4
+        ...
 """
 
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
-from itertools import combinations
 
+import cv2
 import numpy as np
 import pandas as pd
-
-
-BLADE_NAMES = [
-    "blade1",
-    "blade2",
-    "blade3",
-]
 
 
 # ============================================================
 # Configuration
 # ============================================================
 
+@dataclass
 class Config:
 
-    # Anchor 주변 feature 분석 범위
+    # ========================================================
+    # Type2 CST-UP band
+    # ========================================================
+
+    # Type2:
+    #     약 -4.875 ~ -5.186
     #
-    # Type2 sequence 전체를 충분히 포함시키기 위해
-    # CST peak 기준 앞/뒤 3초
-    feature_pre_sec = 3.0
-    feature_post_sec = 3.0
+    # 다른 큰 CST movement:
+    #     약 -10.86 이하
+    #
+    # 따라서:
+    #
+    #     -8 < cst_dy <= -2
+    #
+    # 영역만 Type2 CST-UP candidate로 사용
 
-    # GT event와 anchor matching 허용 margin
-    gt_match_margin_sec = 1.0
+    cst_up_min_dy: float = -8.0
+    cst_up_max_dy: float = -2.0
 
-    # threshold 후보 개수
-    threshold_quantiles = 100
+    # 가까운 CST-UP frame들을 하나의 event로 묶음
+    cst_group_gap_sec: float = 0.40
 
-    # 2개 rule 조합 탐색 시
-    # single rule 상위 N개 feature만 사용
-    top_features_for_pair_search = 20
+    # 너무 짧은 단발 noise 제거
+    cst_min_event_sec: float = 0.03
 
-    # 최소 Type2 Recall
-    min_recall = 1.0
+    # ========================================================
+    # Blade boundary
+    # ========================================================
+
+    # E-2 결과 기준 가장 안정적인 Blade ROI
+    blade_name: str = "blade2"
+
+    # CST-UP 시작 전 Blade IN 탐색 범위
+    blade_in_search_sec: float = 3.0
+
+    # CST-UP 종료 후 Blade OUT 탐색 범위
+    blade_out_search_sec: float = 3.0
+
+    # local adaptive threshold
+    blade_motion_quantile: float = 0.75
+
+    # threshold가 지나치게 낮아지는 것 방지
+    blade_motion_min_threshold: float = 0.015
+
+    # Blade motion 최소 지속 시간
+    blade_min_motion_sec: float = 0.06
+
+    # motion 사이 짧은 gap은 하나로 연결
+    blade_group_gap_sec: float = 0.20
+
+    # ========================================================
+    # Clip margin
+    # ========================================================
+
+    # Blade IN 시작보다 조금 앞
+    pre_margin_sec: float = 0.50
+
+    # Blade OUT 종료보다 조금 뒤
+    post_margin_sec: float = 0.50
+
+    # Blade IN/OUT 검출 실패 시
+    # CST anchor 기준 fallback
+    fallback_pre_sec: float = 3.0
+    fallback_post_sec: float = 3.0
+
+    # ========================================================
+    # GT evaluation
+    # ========================================================
+
+    gt_match_tolerance_sec: float = 3.0
 
 
 # ============================================================
-# Time parser
+# Time utilities
 # ============================================================
 
 def parse_video_time(value) -> float:
+    """
+    Excel timestamp를 초 단위로 변환.
+
+    지원:
+        03:45
+        43:39
+        01:03:25
+        '01:03:25
+    """
 
     if pd.isna(value):
         raise ValueError("Timestamp is empty")
 
     if hasattr(value, "hour"):
-
         return (
             value.hour * 3600
             + value.minute * 60
@@ -100,7 +191,6 @@ def parse_video_time(value) -> float:
     parts = text.split(":")
 
     if len(parts) == 2:
-
         minute = int(parts[0])
         second = float(parts[1])
 
@@ -110,7 +200,6 @@ def parse_video_time(value) -> float:
         )
 
     if len(parts) == 3:
-
         hour = int(parts[0])
         minute = int(parts[1])
         second = float(parts[2])
@@ -126,13 +215,913 @@ def parse_video_time(value) -> float:
     )
 
 
+def format_video_time(sec: float) -> str:
+
+    sec = max(
+        0.0,
+        float(sec),
+    )
+
+    hour = int(
+        sec // 3600
+    )
+
+    minute = int(
+        (sec % 3600) // 60
+    )
+
+    second = (
+        sec % 60
+    )
+
+    return (
+        f"{hour:02d}:"
+        f"{minute:02d}:"
+        f"{second:06.3f}"
+    )
+
+
 # ============================================================
-# Load Ground Truth
+# Boolean temporal grouping
 # ============================================================
 
-def load_gt(path):
+def find_boolean_groups(
+    df: pd.DataFrame,
+    mask: np.ndarray,
+    max_gap_sec: float,
+    min_duration_sec: float,
+):
+    """
+    True mask를 시간 기준으로 group화한다.
 
-    df = pd.read_excel(
+    중간 False 구간이 max_gap_sec 이하이면
+    동일 event로 연결한다.
+    """
+
+    indices = np.where(
+        mask
+    )[0]
+
+    if len(indices) == 0:
+        return []
+
+    groups = []
+
+    current = [
+        indices[0]
+    ]
+
+    for idx in indices[1:]:
+
+        prev_idx = (
+            current[-1]
+        )
+
+        prev_time = float(
+            df.iloc[
+                prev_idx
+            ]["time_sec"]
+        )
+
+        curr_time = float(
+            df.iloc[
+                idx
+            ]["time_sec"]
+        )
+
+        gap = (
+            curr_time
+            - prev_time
+        )
+
+        if (
+            gap
+            <= max_gap_sec
+        ):
+            current.append(
+                idx
+            )
+
+        else:
+            groups.append(
+                current
+            )
+
+            current = [
+                idx
+            ]
+
+    groups.append(
+        current
+    )
+
+    result = []
+
+    for group in groups:
+
+        start_idx = (
+            group[0]
+        )
+
+        end_idx = (
+            group[-1]
+        )
+
+        start_time = float(
+            df.iloc[
+                start_idx
+            ]["time_sec"]
+        )
+
+        end_time = float(
+            df.iloc[
+                end_idx
+            ]["time_sec"]
+        )
+
+        duration = (
+            end_time
+            - start_time
+        )
+
+        # 15 FPS에서는 짧은 실제 motion이
+        # 1~2 frame일 수 있으므로 frame 수 조건도 허용
+        if (
+            duration
+            >= min_duration_sec
+            or
+            len(group) >= 2
+        ):
+
+            result.append({
+
+                "start_idx":
+                    start_idx,
+
+                "end_idx":
+                    end_idx,
+
+                "start_time":
+                    start_time,
+
+                "end_time":
+                    end_time,
+
+                "duration":
+                    duration,
+
+                "indices":
+                    group,
+            })
+
+    return result
+
+
+# ============================================================
+# Type2 CST-UP Detection
+# ============================================================
+
+def detect_cst_up_events(
+    signals: pd.DataFrame,
+    cfg: Config,
+):
+    """
+    Type2 특유의 작은 CST-UP만 검출한다.
+
+    현재 분석 결과:
+
+        Type2:
+            약 -4.875 ~ -5.186
+
+        다른 CST movement:
+            약 -10.86 이하
+
+    따라서:
+
+        cst_up_min_dy < cst_dy <= cst_up_max_dy
+
+    즉 기본값:
+
+        -8 < cst_dy <= -2
+
+    를 만족하는 frame만 사용한다.
+    """
+
+    dy = (
+        signals[
+            "cst_dy"
+        ]
+        .to_numpy(
+            dtype=np.float64
+        )
+    )
+
+    mask = (
+        (dy > cfg.cst_up_min_dy)
+        &
+        (dy <= cfg.cst_up_max_dy)
+    )
+
+    groups = find_boolean_groups(
+        signals,
+        mask,
+        max_gap_sec=
+            cfg.cst_group_gap_sec,
+        min_duration_sec=
+            cfg.cst_min_event_sec,
+    )
+
+    events = []
+
+    for group in groups:
+
+        start_idx = (
+            group[
+                "start_idx"
+            ]
+        )
+
+        end_idx = (
+            group[
+                "end_idx"
+            ]
+        )
+
+        local = signals.iloc[
+            start_idx:
+            end_idx + 1
+        ]
+
+        # group 안에서 가장 강한 UP
+        # = 가장 작은 cst_dy
+        min_local_idx = (
+            local[
+                "cst_dy"
+            ]
+            .idxmin()
+        )
+
+        peak_row = (
+            signals.loc[
+                min_local_idx
+            ]
+        )
+
+        events.append({
+
+            "cst_start_time":
+                group[
+                    "start_time"
+                ],
+
+            "cst_end_time":
+                group[
+                    "end_time"
+                ],
+
+            "cst_peak_time":
+                float(
+                    peak_row[
+                        "time_sec"
+                    ]
+                ),
+
+            "cst_peak_dy":
+                float(
+                    peak_row[
+                        "cst_dy"
+                    ]
+                ),
+
+            "cst_peak_frame":
+                int(
+                    peak_row[
+                        "frame_idx"
+                    ]
+                ),
+        })
+
+    return events
+
+
+# ============================================================
+# Blade motion threshold
+# ============================================================
+
+def calculate_local_motion_threshold(
+    values,
+    cfg: Config,
+):
+
+    values = np.asarray(
+        values,
+        dtype=np.float64,
+    )
+
+    values = values[
+        np.isfinite(
+            values
+        )
+    ]
+
+    if len(values) == 0:
+        return (
+            cfg.blade_motion_min_threshold
+        )
+
+    threshold = float(
+        np.quantile(
+            values,
+            cfg.blade_motion_quantile,
+        )
+    )
+
+    return max(
+        threshold,
+        cfg.blade_motion_min_threshold,
+    )
+
+
+# ============================================================
+# Blade motion groups
+# ============================================================
+
+def find_blade_motion_groups(
+    signals: pd.DataFrame,
+    start_time: float,
+    end_time: float,
+    cfg: Config,
+):
+
+    blade_col = (
+        f"{cfg.blade_name}_"
+        "motion_ratio"
+    )
+
+    window = (
+        signals[
+            (
+                signals[
+                    "time_sec"
+                ]
+                >= start_time
+            )
+            &
+            (
+                signals[
+                    "time_sec"
+                ]
+                <= end_time
+            )
+        ]
+        .copy()
+        .reset_index(
+            drop=True
+        )
+    )
+
+    if len(window) == 0:
+        return [], np.nan
+
+    threshold = (
+        calculate_local_motion_threshold(
+            window[
+                blade_col
+            ].to_numpy(),
+            cfg,
+        )
+    )
+
+    mask = (
+        window[
+            blade_col
+        ].to_numpy(
+            dtype=np.float64
+        )
+        >= threshold
+    )
+
+    groups = find_boolean_groups(
+        window,
+        mask,
+        max_gap_sec=
+            cfg.blade_group_gap_sec,
+        min_duration_sec=
+            cfg.blade_min_motion_sec,
+    )
+
+    result = []
+
+    for group in groups:
+
+        start_idx = (
+            group[
+                "start_idx"
+            ]
+        )
+
+        end_idx = (
+            group[
+                "end_idx"
+            ]
+        )
+
+        local = window.iloc[
+            start_idx:
+            end_idx + 1
+        ]
+
+        peak_local_idx = (
+            local[
+                blade_col
+            ]
+            .idxmax()
+        )
+
+        peak_row = (
+            window.loc[
+                peak_local_idx
+            ]
+        )
+
+        result.append({
+
+            "start_time":
+                group[
+                    "start_time"
+                ],
+
+            "end_time":
+                group[
+                    "end_time"
+                ],
+
+            "duration":
+                group[
+                    "duration"
+                ],
+
+            "peak_time":
+                float(
+                    peak_row[
+                        "time_sec"
+                    ]
+                ),
+
+            "peak_motion":
+                float(
+                    peak_row[
+                        blade_col
+                    ]
+                ),
+
+            "threshold":
+                threshold,
+        })
+
+    return (
+        result,
+        threshold,
+    )
+
+
+# ============================================================
+# Blade IN
+# ============================================================
+
+def find_blade_in(
+    signals: pd.DataFrame,
+    cst_start_time: float,
+    cfg: Config,
+):
+    """
+    CST-UP 시작 전 blade motion을 탐색한다.
+
+    radial sign은 사용하지 않는다.
+
+    CST-UP에 가장 가까운 motion group을
+    Blade IN 후보로 사용한다.
+    """
+
+    search_start = max(
+        0.0,
+        cst_start_time
+        - cfg.blade_in_search_sec,
+    )
+
+    search_end = (
+        cst_start_time
+    )
+
+    (
+        groups,
+        threshold,
+    ) = find_blade_motion_groups(
+        signals,
+        search_start,
+        search_end,
+        cfg,
+    )
+
+    if not groups:
+        return None, threshold
+
+    # CST-UP 직전 가장 가까운 motion
+    candidate = max(
+        groups,
+        key=lambda g:
+            g["end_time"]
+    )
+
+    return (
+        candidate,
+        threshold,
+    )
+
+
+# ============================================================
+# Blade OUT
+# ============================================================
+
+def find_blade_out(
+    signals: pd.DataFrame,
+    cst_end_time: float,
+    cfg: Config,
+):
+    """
+    CST-UP 종료 후 blade motion을 탐색한다.
+
+    CST-UP 이후 최초 motion group을
+    Blade OUT 후보로 사용한다.
+    """
+
+    search_start = (
+        cst_end_time
+    )
+
+    search_end = (
+        cst_end_time
+        + cfg.blade_out_search_sec
+    )
+
+    (
+        groups,
+        threshold,
+    ) = find_blade_motion_groups(
+        signals,
+        search_start,
+        search_end,
+        cfg,
+    )
+
+    if not groups:
+        return None, threshold
+
+    candidate = min(
+        groups,
+        key=lambda g:
+            g["start_time"]
+    )
+
+    return (
+        candidate,
+        threshold,
+    )
+
+
+# ============================================================
+# Build Type2 Events
+# ============================================================
+
+def build_type2_events(
+    signals: pd.DataFrame,
+    cst_events,
+    cfg: Config,
+):
+    """
+    Type2 CST-UP anchor마다 Blade IN/OUT boundary를 찾는다.
+
+    Blade boundary 검출 실패 시에도
+    event 자체를 버리지 않는다.
+
+    이유:
+        Type2 검출의 핵심은 CST-UP anchor이고,
+        Blade는 clip boundary 보조 신호이기 때문이다.
+    """
+
+    detected = []
+
+    for event_id, cst in enumerate(
+        cst_events,
+        start=1,
+    ):
+
+        cst_start = float(
+            cst[
+                "cst_start_time"
+            ]
+        )
+
+        cst_end = float(
+            cst[
+                "cst_end_time"
+            ]
+        )
+
+        # ====================================================
+        # Blade IN
+        # ====================================================
+
+        (
+            blade_in,
+            blade_in_threshold,
+        ) = find_blade_in(
+            signals,
+            cst_start,
+            cfg,
+        )
+
+        # ====================================================
+        # Blade OUT
+        # ====================================================
+
+        (
+            blade_out,
+            blade_out_threshold,
+        ) = find_blade_out(
+            signals,
+            cst_end,
+            cfg,
+        )
+
+        # ====================================================
+        # Clip start
+        # ====================================================
+
+        if blade_in is not None:
+
+            clip_start = (
+                blade_in[
+                    "start_time"
+                ]
+                -
+                cfg.pre_margin_sec
+            )
+
+            blade_in_source = (
+                "blade"
+            )
+
+        else:
+
+            clip_start = (
+                cst_start
+                -
+                cfg.fallback_pre_sec
+            )
+
+            blade_in_source = (
+                "fallback"
+            )
+
+        clip_start = max(
+            0.0,
+            clip_start,
+        )
+
+        # ====================================================
+        # Clip end
+        # ====================================================
+
+        if blade_out is not None:
+
+            clip_end = (
+                blade_out[
+                    "end_time"
+                ]
+                +
+                cfg.post_margin_sec
+            )
+
+            blade_out_source = (
+                "blade"
+            )
+
+        else:
+
+            clip_end = (
+                cst_end
+                +
+                cfg.fallback_post_sec
+            )
+
+            blade_out_source = (
+                "fallback"
+            )
+
+        # 혹시 잘못된 boundary가 만들어지는 것 방지
+        if clip_end <= clip_start:
+
+            clip_start = max(
+                0.0,
+                cst_start
+                -
+                cfg.fallback_pre_sec,
+            )
+
+            clip_end = (
+                cst_end
+                +
+                cfg.fallback_post_sec
+            )
+
+            blade_in_source = (
+                "fallback"
+            )
+
+            blade_out_source = (
+                "fallback"
+            )
+
+        # ====================================================
+        # Sequence score
+        # ====================================================
+
+        score = 1.0
+
+        if blade_in is None:
+            score -= 0.25
+
+        if blade_out is None:
+            score -= 0.25
+
+        score = max(
+            0.0,
+            score,
+        )
+
+        # ====================================================
+        # Result
+        # ====================================================
+
+        detected.append({
+
+            "event_id":
+                event_id,
+
+            # ------------------------------------------------
+            # CST
+            # ------------------------------------------------
+
+            "cst_start_sec":
+                cst_start,
+
+            "cst_peak_sec":
+                float(
+                    cst[
+                        "cst_peak_time"
+                    ]
+                ),
+
+            "cst_end_sec":
+                cst_end,
+
+            "cst_peak_dy":
+                float(
+                    cst[
+                        "cst_peak_dy"
+                    ]
+                ),
+
+            "cst_peak_frame":
+                int(
+                    cst[
+                        "cst_peak_frame"
+                    ]
+                ),
+
+            # ------------------------------------------------
+            # Blade IN
+            # ------------------------------------------------
+
+            "blade_in_start_sec":
+                (
+                    blade_in[
+                        "start_time"
+                    ]
+                    if blade_in
+                    else np.nan
+                ),
+
+            "blade_in_end_sec":
+                (
+                    blade_in[
+                        "end_time"
+                    ]
+                    if blade_in
+                    else np.nan
+                ),
+
+            "blade_in_peak_sec":
+                (
+                    blade_in[
+                        "peak_time"
+                    ]
+                    if blade_in
+                    else np.nan
+                ),
+
+            "blade_in_peak_motion":
+                (
+                    blade_in[
+                        "peak_motion"
+                    ]
+                    if blade_in
+                    else np.nan
+                ),
+
+            "blade_in_threshold":
+                blade_in_threshold,
+
+            # ------------------------------------------------
+            # Blade OUT
+            # ------------------------------------------------
+
+            "blade_out_start_sec":
+                (
+                    blade_out[
+                        "start_time"
+                    ]
+                    if blade_out
+                    else np.nan
+                ),
+
+            "blade_out_end_sec":
+                (
+                    blade_out[
+                        "end_time"
+                    ]
+                    if blade_out
+                    else np.nan
+                ),
+
+            "blade_out_peak_sec":
+                (
+                    blade_out[
+                        "peak_time"
+                    ]
+                    if blade_out
+                    else np.nan
+                ),
+
+            "blade_out_peak_motion":
+                (
+                    blade_out[
+                        "peak_motion"
+                    ]
+                    if blade_out
+                    else np.nan
+                ),
+
+            "blade_out_threshold":
+                blade_out_threshold,
+
+            # ------------------------------------------------
+            # Clip
+            # ------------------------------------------------
+
+            "clip_start_sec":
+                clip_start,
+
+            "clip_end_sec":
+                clip_end,
+
+            "clip_duration_sec":
+                clip_end
+                - clip_start,
+
+            "blade_in_source":
+                blade_in_source,
+
+            "blade_out_source":
+                blade_out_source,
+
+            "sequence_score":
+                score,
+        })
+
+    return detected
+
+
+# ============================================================
+# Ground Truth
+# ============================================================
+
+def load_gt(
+    path,
+):
+
+    gt = pd.read_excel(
         path,
         dtype={
             "type": str,
@@ -141,1287 +1130,478 @@ def load_gt(path):
         },
     )
 
-    df["type"] = (
-        df["type"]
+    gt["type"] = (
+        gt["type"]
         .str.strip()
         .str.lower()
     )
 
-    df["gt_start_sec"] = (
-        df["start_sec"]
-        .apply(parse_video_time)
-    )
-
-    df["gt_end_sec"] = (
-        df["end_sec"]
-        .apply(parse_video_time)
-    )
-
-    return (
-        df
-        .sort_values("gt_start_sec")
-        .reset_index(drop=True)
-    )
-
-
-# ============================================================
-# GT ↔ Anchor matching
-# ============================================================
-
-def match_anchors_to_gt(
-    anchors,
-    gt,
-    cfg,
-):
-
-    """
-    CST peak timestamp를 이용하여 GT event와 매칭.
-
-    우선순위:
-        1. GT start/end 안에 anchor 존재
-        2. ± margin 안에 존재
-        3. 가장 가까운 GT 선택
-
-    하나의 GT는 하나의 anchor와만 매칭.
-    """
-
-    candidates = []
-
-    for anchor_idx, anchor in anchors.iterrows():
-
-        anchor_time = float(
-            anchor["cst_peak_sec"]
-        )
-
-        for gt_idx, gt_row in gt.iterrows():
-
-            start = float(
-                gt_row["gt_start_sec"]
-            )
-
-            end = float(
-                gt_row["gt_end_sec"]
-            )
-
-            if (
-                anchor_time
-                <
-                start
-                - cfg.gt_match_margin_sec
-            ):
-                continue
-
-            if (
-                anchor_time
-                >
-                end
-                + cfg.gt_match_margin_sec
-            ):
-                continue
-
-            # GT 구간 내부이면 distance=0 취급
-            if start <= anchor_time <= end:
-
-                distance = 0.0
-
-            else:
-
-                distance = min(
-                    abs(anchor_time - start),
-                    abs(anchor_time - end),
-                )
-
-            candidates.append(
-                (
-                    distance,
-                    anchor_idx,
-                    gt_idx,
-                )
-            )
-
-    # 가장 가까운 것부터 greedy matching
-    candidates.sort(
-        key=lambda x: x[0]
-    )
-
-    used_anchor = set()
-    used_gt = set()
-
-    matches = {}
-
-    for (
-        distance,
-        anchor_idx,
-        gt_idx,
-    ) in candidates:
-
-        if anchor_idx in used_anchor:
-            continue
-
-        if gt_idx in used_gt:
-            continue
-
-        used_anchor.add(
-            anchor_idx
-        )
-
-        used_gt.add(
-            gt_idx
-        )
-
-        matches[
-            anchor_idx
-        ] = (
-            gt_idx,
-            distance,
-        )
-
-    return matches
-
-
-# ============================================================
-# Basic statistics
-# ============================================================
-
-def clean_array(values):
-
-    values = np.asarray(
-        values,
-        dtype=np.float64,
-    )
-
-    return values[
-        np.isfinite(values)
-    ]
-
-
-def stat_mean(values):
-
-    x = clean_array(values)
-
-    if len(x) == 0:
-        return np.nan
-
-    return float(
-        np.mean(x)
-    )
-
-
-def stat_min(values):
-
-    x = clean_array(values)
-
-    if len(x) == 0:
-        return np.nan
-
-    return float(
-        np.min(x)
-    )
-
-
-def stat_max(values):
-
-    x = clean_array(values)
-
-    if len(x) == 0:
-        return np.nan
-
-    return float(
-        np.max(x)
-    )
-
-
-def stat_percentile(
-    values,
-    q,
-):
-
-    x = clean_array(values)
-
-    if len(x) == 0:
-        return np.nan
-
-    return float(
-        np.percentile(
-            x,
-            q,
-        )
-    )
-
-
-# ============================================================
-# Peak helpers
-# ============================================================
-
-def max_peak(
-    df,
-    column,
-):
-
-    values = df[
-        column
-    ].to_numpy(
-        dtype=np.float64
-    )
-
-    valid = np.isfinite(
-        values
-    )
-
-    if not np.any(valid):
-        return np.nan, np.nan
-
-    valid_indices = np.where(
-        valid
-    )[0]
-
-    local_idx = valid_indices[
-        np.argmax(
-            values[valid]
-        )
-    ]
-
-    row = df.iloc[
-        local_idx
-    ]
-
-    return (
-        float(row[column]),
-        float(row["time_sec"]),
-    )
-
-
-def min_peak(
-    df,
-    column,
-):
-
-    values = df[
-        column
-    ].to_numpy(
-        dtype=np.float64
-    )
-
-    valid = np.isfinite(
-        values
-    )
-
-    if not np.any(valid):
-        return np.nan, np.nan
-
-    valid_indices = np.where(
-        valid
-    )[0]
-
-    local_idx = valid_indices[
-        np.argmin(
-            values[valid]
-        )
-    ]
-
-    row = df.iloc[
-        local_idx
-    ]
-
-    return (
-        float(row[column]),
-        float(row["time_sec"]),
-    )
-
-
-# ============================================================
-# Anchor feature extraction
-# ============================================================
-
-def extract_anchor_features(
-    signals,
-    anchor,
-    gt_row,
-    cfg,
-):
-
-    anchor_time = float(
-        anchor["cst_peak_sec"]
-    )
-
-    start_time = max(
-        0.0,
-        anchor_time
-        - cfg.feature_pre_sec,
-    )
-
-    end_time = (
-        anchor_time
-        + cfg.feature_post_sec
-    )
-
-    window = signals[
-        (
-            signals["time_sec"]
-            >= start_time
-        )
-        &
-        (
-            signals["time_sec"]
-            <= end_time
-        )
-    ].copy()
-
-    if len(window) == 0:
-        return None
-
-    result = {
-
-        "event_id":
-            anchor["event_id"],
-
-        "type":
-            gt_row["type"],
-
-        "slot":
-            gt_row["slot"],
-
-        "anchor_sec":
-            anchor_time,
-
-        "gt_start_sec":
-            gt_row[
-                "gt_start_sec"
-            ],
-
-        "gt_end_sec":
-            gt_row[
-                "gt_end_sec"
-            ],
-
-        "window_start_sec":
-            start_time,
-
-        "window_end_sec":
-            end_time,
-
-        "cst_anchor_peak_dy":
-            anchor[
-                "cst_peak_dy"
-            ],
-    }
-
-    # ========================================================
-    # CST
-    # ========================================================
-
-    cst_dy = (
-        window[
-            "cst_dy"
-        ].to_numpy(
-            dtype=np.float64
-        )
-    )
-
-    cst_abs = np.abs(
-        cst_dy
-    )
-
-    result.update({
-
-        "cst_dy_min":
-            stat_min(
-                cst_dy
-            ),
-
-        "cst_dy_max":
-            stat_max(
-                cst_dy
-            ),
-
-        "cst_abs_max":
-            stat_max(
-                cst_abs
-            ),
-
-        "cst_abs_mean":
-            stat_mean(
-                cst_abs
-            ),
-
-        "cst_abs_p90":
-            stat_percentile(
-                cst_abs,
-                90,
-            ),
-
-        "cst_abs_p95":
-            stat_percentile(
-                cst_abs,
-                95,
-            ),
-
-        "cst_phase_mean":
-            stat_mean(
-                window[
-                    "cst_phase_response"
-                ]
-            ),
-
-        "cst_phase_p50":
-            stat_percentile(
-                window[
-                    "cst_phase_response"
-                ],
-                50,
-            ),
-    })
-
-    # ========================================================
-    # Blade
-    # ========================================================
-
-    for blade in BLADE_NAMES:
-
-        prefix = (
-            f"{blade}_"
-        )
-
-        motion_col = (
-            prefix
-            + "motion_ratio"
-        )
-
-        diff_col = (
-            prefix
-            + "mean_diff"
-        )
-
-        radial_col = (
-            prefix
-            + "radial_score"
-        )
-
-        radial_abs_col = (
-            prefix
-            + "radial_abs"
-        )
-
-        active_col = (
-            prefix
-            + "active_ratio"
-        )
-
-        magnitude_col = (
-            prefix
-            + "median_magnitude"
-        )
-
-        flow_x_col = (
-            prefix
-            + "flow_x"
-        )
-
-        flow_y_col = (
-            prefix
-            + "flow_y"
-        )
-
-        # ----------------------------------------------------
-        # 전체 window
-        # ----------------------------------------------------
-
-        result[
-            f"{blade}_motion_max"
-        ] = stat_max(
-            window[motion_col]
-        )
-
-        result[
-            f"{blade}_motion_mean"
-        ] = stat_mean(
-            window[motion_col]
-        )
-
-        result[
-            f"{blade}_motion_p90"
-        ] = stat_percentile(
-            window[motion_col],
-            90,
-        )
-
-        result[
-            f"{blade}_motion_p95"
-        ] = stat_percentile(
-            window[motion_col],
-            95,
-        )
-
-        result[
-            f"{blade}_diff_max"
-        ] = stat_max(
-            window[diff_col]
-        )
-
-        result[
-            f"{blade}_diff_p95"
-        ] = stat_percentile(
-            window[diff_col],
-            95,
-        )
-
-        radial_max, radial_max_time = (
-            max_peak(
-                window,
-                radial_col,
-            )
-        )
-
-        radial_min, radial_min_time = (
-            min_peak(
-                window,
-                radial_col,
-            )
-        )
-
-        result[
-            f"{blade}_radial_max"
-        ] = radial_max
-
-        result[
-            f"{blade}_radial_min"
-        ] = radial_min
-
-        result[
-            f"{blade}_radial_max_rel_sec"
-        ] = (
-            radial_max_time
-            - anchor_time
-        )
-
-        result[
-            f"{blade}_radial_min_rel_sec"
-        ] = (
-            radial_min_time
-            - anchor_time
-        )
-
-        result[
-            f"{blade}_radial_abs_max"
-        ] = stat_max(
-            window[
-                radial_abs_col
-            ]
-        )
-
-        result[
-            f"{blade}_radial_abs_p95"
-        ] = stat_percentile(
-            window[
-                radial_abs_col
-            ],
-            95,
-        )
-
-        result[
-            f"{blade}_active_max"
-        ] = stat_max(
-            window[
-                active_col
-            ]
-        )
-
-        result[
-            f"{blade}_active_p95"
-        ] = stat_percentile(
-            window[
-                active_col
-            ],
-            95,
-        )
-
-        result[
-            f"{blade}_magnitude_max"
-        ] = stat_max(
-            window[
-                magnitude_col
-            ]
-        )
-
-        result[
-            f"{blade}_magnitude_p95"
-        ] = stat_percentile(
-            window[
-                magnitude_col
-            ],
-            95,
-        )
-
-        result[
-            f"{blade}_flow_x_abs_p95"
-        ] = stat_percentile(
-            np.abs(
-                window[
-                    flow_x_col
-                ]
-            ),
-            95,
-        )
-
-        result[
-            f"{blade}_flow_y_abs_p95"
-        ] = stat_percentile(
-            np.abs(
-                window[
-                    flow_y_col
-                ]
-            ),
-            95,
-        )
-
-        # ----------------------------------------------------
-        # Anchor 전/후 분리
-        # ----------------------------------------------------
-
-        before = window[
-            window[
-                "time_sec"
-            ]
-            <
-            anchor_time
+    gt[
+        "gt_start_sec"
+    ] = (
+        gt[
+            "start_sec"
         ]
+        .apply(
+            parse_video_time
+        )
+    )
 
-        after = window[
-            window[
-                "time_sec"
-            ]
-            >=
-            anchor_time
+    gt[
+        "gt_end_sec"
+    ] = (
+        gt[
+            "end_sec"
         ]
-
-        result[
-            f"{blade}_before_motion_max"
-        ] = stat_max(
-            before[
-                motion_col
-            ]
+        .apply(
+            parse_video_time
         )
+    )
 
-        result[
-            f"{blade}_after_motion_max"
-        ] = stat_max(
-            after[
-                motion_col
-            ]
-        )
-
-        result[
-            f"{blade}_before_radial_max"
-        ] = stat_max(
-            before[
-                radial_col
-            ]
-        )
-
-        result[
-            f"{blade}_before_radial_min"
-        ] = stat_min(
-            before[
-                radial_col
-            ]
-        )
-
-        result[
-            f"{blade}_after_radial_max"
-        ] = stat_max(
-            after[
-                radial_col
-            ]
-        )
-
-        result[
-            f"{blade}_after_radial_min"
-        ] = stat_min(
-            after[
-                radial_col
-            ]
-        )
-
-        result[
-            f"{blade}_before_active_max"
-        ] = stat_max(
-            before[
-                active_col
-            ]
-        )
-
-        result[
-            f"{blade}_after_active_max"
-        ] = stat_max(
-            after[
-                active_col
-            ]
-        )
-
-    return result
+    return gt
 
 
 # ============================================================
-# Classification metrics
+# GT Comparison
 # ============================================================
 
-def evaluate_prediction(
-    y_true,
-    prediction,
+def compare_with_gt(
+    detected_df: pd.DataFrame,
+    gt_df: pd.DataFrame,
+    cfg: Config,
 ):
+    """
+    검출된 Type2 candidate와
+    GT Type2만 비교한다.
 
-    y_true = np.asarray(
-        y_true,
-        dtype=bool,
-    )
+    GT는 detection에 사용하지 않고
+    성능 평가에만 사용한다.
+    """
 
-    prediction = np.asarray(
-        prediction,
-        dtype=bool,
-    )
-
-    tp = int(
-        np.sum(
-            y_true
-            &
-            prediction
-        )
-    )
-
-    tn = int(
-        np.sum(
-            ~y_true
-            &
-            ~prediction
-        )
-    )
-
-    fp = int(
-        np.sum(
-            ~y_true
-            &
-            prediction
-        )
-    )
-
-    fn = int(
-        np.sum(
-            y_true
-            &
-            ~prediction
-        )
-    )
-
-    recall = (
-        tp / (tp + fn)
-        if tp + fn
-        else 0.0
-    )
-
-    precision = (
-        tp / (tp + fp)
-        if tp + fp
-        else 0.0
-    )
-
-    specificity = (
-        tn / (tn + fp)
-        if tn + fp
-        else 0.0
-    )
-
-    accuracy = (
-        (tp + tn)
-        /
-        len(y_true)
-        if len(y_true)
-        else 0.0
-    )
-
-    return {
-
-        "tp": tp,
-        "tn": tn,
-        "fp": fp,
-        "fn": fn,
-
-        "recall":
-            recall,
-
-        "precision":
-            precision,
-
-        "specificity":
-            specificity,
-
-        "accuracy":
-            accuracy,
-    }
-
-
-# ============================================================
-# Threshold candidates
-# ============================================================
-
-def build_thresholds(
-    values,
-    n_quantiles,
-):
-
-    values = clean_array(
-        values
-    )
-
-    if len(values) == 0:
-        return []
-
-    unique = np.unique(
-        values
-    )
-
-    # 데이터가 적으면 실제 값 사이 midpoint 사용
-    if len(unique) <= 100:
-
-        thresholds = []
-
-        # 양 끝 threshold도 포함
-        thresholds.append(
-            unique[0]
-            - 1e-9
-        )
-
-        for a, b in zip(
-            unique[:-1],
-            unique[1:],
-        ):
-
-            thresholds.append(
-                (a + b) / 2.0
-            )
-
-        thresholds.append(
-            unique[-1]
-            + 1e-9
-        )
-
-        return thresholds
-
-    quantiles = np.linspace(
-        0.0,
-        1.0,
-        n_quantiles,
-    )
-
-    return np.unique(
-        np.quantile(
-            values,
-            quantiles,
-        )
-    ).tolist()
-
-
-# ============================================================
-# Single rule search
-# ============================================================
-
-def search_single_rules(
-    df,
-    cfg,
-):
-
-    y_true = (
-        df["type"]
-        ==
-        "type_2"
-    ).to_numpy()
-
-    ignore = {
-        "event_id",
-        "slot",
-
-        "anchor_sec",
-
-        "gt_start_sec",
-        "gt_end_sec",
-
-        "window_start_sec",
-        "window_end_sec",
-    }
-
-    numeric_columns = (
-        df
-        .select_dtypes(
-            include=[
-                np.number
+    gt2 = (
+        gt_df[
+            gt_df[
+                "type"
             ]
+            ==
+            "type_2"
+        ]
+        .copy()
+        .sort_values(
+            "gt_start_sec"
         )
-        .columns
-    )
-
-    rows = []
-
-    for feature in numeric_columns:
-
-        if feature in ignore:
-            continue
-
-        values = (
-            df[feature]
-            .to_numpy(
-                dtype=np.float64
-            )
-        )
-
-        if np.any(
-            ~np.isfinite(values)
-        ):
-            continue
-
-        thresholds = (
-            build_thresholds(
-                values,
-                cfg.threshold_quantiles,
-            )
-        )
-
-        for threshold in thresholds:
-
-            # --------------------------------------------
-            # feature >= threshold
-            # --------------------------------------------
-
-            pred = (
-                values
-                >=
-                threshold
-            )
-
-            metrics = (
-                evaluate_prediction(
-                    y_true,
-                    pred,
-                )
-            )
-
-            rows.append({
-
-                "feature":
-                    feature,
-
-                "op":
-                    ">=",
-
-                "threshold":
-                    threshold,
-
-                **metrics,
-            })
-
-            # --------------------------------------------
-            # feature <= threshold
-            # --------------------------------------------
-
-            pred = (
-                values
-                <=
-                threshold
-            )
-
-            metrics = (
-                evaluate_prediction(
-                    y_true,
-                    pred,
-                )
-            )
-
-            rows.append({
-
-                "feature":
-                    feature,
-
-                "op":
-                    "<=",
-
-                "threshold":
-                    threshold,
-
-                **metrics,
-            })
-
-    result = pd.DataFrame(
-        rows
-    )
-
-    if len(result):
-
-        result = result.sort_values(
-            [
-                "recall",
-                "precision",
-                "specificity",
-                "accuracy",
-            ],
-            ascending=[
-                False,
-                False,
-                False,
-                False,
-            ],
-        ).reset_index(
+        .reset_index(
             drop=True
         )
-
-    return result
-
-
-# ============================================================
-# Rule apply
-# ============================================================
-
-def apply_rule(
-    df,
-    feature,
-    op,
-    threshold,
-):
-
-    values = (
-        df[feature]
-        .to_numpy(
-            dtype=np.float64
-        )
     )
-
-    if op == ">=":
-
-        return (
-            values
-            >=
-            threshold
-        )
-
-    if op == "<=":
-
-        return (
-            values
-            <=
-            threshold
-        )
-
-    raise ValueError(
-        f"Unsupported op: {op}"
-    )
-
-
-# ============================================================
-# Select candidate rules
-# ============================================================
-
-def select_feature_candidates(
-    single_rules,
-    cfg,
-):
-
-    """
-    각 feature별 가장 좋은 Recall=1 rule 하나를 선택.
-
-    동일 feature threshold 수십 개가 pair search에
-    중복 투입되는 것을 방지.
-    """
-
-    perfect_recall = (
-        single_rules[
-            single_rules[
-                "recall"
-            ]
-            >=
-            cfg.min_recall
-        ]
-    )
-
-    if len(perfect_recall) == 0:
-
-        perfect_recall = (
-            single_rules.copy()
-        )
-
-    candidates = []
-
-    used_features = set()
-
-    for _, row in (
-        perfect_recall.iterrows()
-    ):
-
-        feature = row[
-            "feature"
-        ]
-
-        if feature in used_features:
-            continue
-
-        candidates.append(
-            row
-        )
-
-        used_features.add(
-            feature
-        )
-
-        if (
-            len(candidates)
-            >=
-            cfg.top_features_for_pair_search
-        ):
-            break
-
-    return pd.DataFrame(
-        candidates
-    )
-
-
-# ============================================================
-# Two-rule AND search
-# ============================================================
-
-def search_two_rules(
-    df,
-    candidate_rules,
-    cfg,
-):
-
-    y_true = (
-        df["type"]
-        ==
-        "type_2"
-    ).to_numpy()
 
     rows = []
 
-    records = (
-        candidate_rules
-        .to_dict(
-            "records"
+    used_detected = set()
+
+    for _, gt in gt2.iterrows():
+
+        gt_start = float(
+            gt[
+                "gt_start_sec"
+            ]
         )
-    )
 
-    for rule1, rule2 in combinations(
-        records,
-        2,
-    ):
+        gt_end = float(
+            gt[
+                "gt_end_sec"
+            ]
+        )
 
-        # 같은 feature는 skip
-        if (
-            rule1["feature"]
-            ==
-            rule2["feature"]
+        gt_center = (
+            gt_start
+            +
+            gt_end
+        ) / 2.0
+
+        best_idx = None
+        best_distance = None
+
+        for det_idx, det in (
+            detected_df.iterrows()
         ):
+
+            if det_idx in used_detected:
+                continue
+
+            anchor = float(
+                det[
+                    "cst_peak_sec"
+                ]
+            )
+
+            # GT interval + tolerance
+            if (
+                anchor
+                <
+                gt_start
+                -
+                cfg.gt_match_tolerance_sec
+            ):
+                continue
+
+            if (
+                anchor
+                >
+                gt_end
+                +
+                cfg.gt_match_tolerance_sec
+            ):
+                continue
+
+            # anchor가 GT 내부면
+            # GT center와의 거리로 가장 가까운 것 선택
+            distance = abs(
+                anchor
+                -
+                gt_center
+            )
+
+            if (
+                best_distance is None
+                or
+                distance
+                <
+                best_distance
+            ):
+
+                best_idx = (
+                    det_idx
+                )
+
+                best_distance = (
+                    distance
+                )
+
+        # ====================================================
+        # Miss
+        # ====================================================
+
+        if best_idx is None:
+
+            rows.append({
+
+                "slot":
+                    gt["slot"],
+
+                "gt_start_sec":
+                    gt_start,
+
+                "gt_end_sec":
+                    gt_end,
+
+                "matched":
+                    False,
+
+                "detected_event_id":
+                    np.nan,
+
+                "cst_peak_sec":
+                    np.nan,
+
+                "time_error_sec":
+                    np.nan,
+
+                "clip_start_sec":
+                    np.nan,
+
+                "clip_end_sec":
+                    np.nan,
+            })
+
             continue
 
-        pred1 = apply_rule(
-            df,
+        # ====================================================
+        # Match
+        # ====================================================
 
-            rule1[
-                "feature"
-            ],
-
-            rule1[
-                "op"
-            ],
-
-            rule1[
-                "threshold"
-            ],
+        used_detected.add(
+            best_idx
         )
 
-        pred2 = apply_rule(
-            df,
-
-            rule2[
-                "feature"
-            ],
-
-            rule2[
-                "op"
-            ],
-
-            rule2[
-                "threshold"
-            ],
-        )
-
-        prediction = (
-            pred1
-            &
-            pred2
-        )
-
-        metrics = (
-            evaluate_prediction(
-                y_true,
-                prediction,
-            )
+        det = (
+            detected_df.loc[
+                best_idx
+            ]
         )
 
         rows.append({
 
-            "feature1":
-                rule1[
-                    "feature"
-                ],
+            "slot":
+                gt["slot"],
 
-            "op1":
-                rule1[
-                    "op"
-                ],
+            "gt_start_sec":
+                gt_start,
 
-            "threshold1":
-                rule1[
-                    "threshold"
-                ],
+            "gt_end_sec":
+                gt_end,
 
-            "feature2":
-                rule2[
-                    "feature"
-                ],
+            "matched":
+                True,
 
-            "op2":
-                rule2[
-                    "op"
-                ],
+            "detected_event_id":
+                int(
+                    det[
+                        "event_id"
+                    ]
+                ),
 
-            "threshold2":
-                rule2[
-                    "threshold"
-                ],
+            "cst_peak_sec":
+                float(
+                    det[
+                        "cst_peak_sec"
+                    ]
+                ),
 
-            **metrics,
+            "time_error_sec":
+                (
+                    float(
+                        det[
+                            "cst_peak_sec"
+                        ]
+                    )
+                    -
+                    gt_center
+                ),
+
+            "clip_start_sec":
+                float(
+                    det[
+                        "clip_start_sec"
+                    ]
+                ),
+
+            "clip_end_sec":
+                float(
+                    det[
+                        "clip_end_sec"
+                    ]
+                ),
         })
 
-    result = pd.DataFrame(
+    comparison = pd.DataFrame(
         rows
     )
 
-    if len(result):
+    return (
+        comparison,
+        used_detected,
+    )
 
-        result = result.sort_values(
-            [
-                "recall",
-                "precision",
-                "specificity",
-                "accuracy",
-            ],
-            ascending=[
-                False,
-                False,
-                False,
-                False,
-            ],
-        ).reset_index(
-            drop=True
+
+# ============================================================
+# Video Clip Export
+# ============================================================
+
+def export_clips(
+    video_path: Path,
+    detected_df: pd.DataFrame,
+    clip_dir: Path,
+):
+    """
+    OpenCV로 원본 영상의 정확한 frame 구간을 decode하여
+    Type2 clip을 저장한다.
+
+    ffmpeg stream-copy 방식과 달리 keyframe 위치에
+    clip 시작점이 밀리는 문제를 피하기 위해
+    frame 단위 decode/write를 사용한다.
+    """
+
+    clip_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    cap = cv2.VideoCapture(
+        str(video_path)
+    )
+
+    if not cap.isOpened():
+        raise RuntimeError(
+            f"Cannot open video: {video_path}"
         )
 
-    return result
+    fps = float(
+        cap.get(
+            cv2.CAP_PROP_FPS
+        )
+    )
+
+    width = int(
+        cap.get(
+            cv2.CAP_PROP_FRAME_WIDTH
+        )
+    )
+
+    height = int(
+        cap.get(
+            cv2.CAP_PROP_FRAME_HEIGHT
+        )
+    )
+
+    total_frames = int(
+        cap.get(
+            cv2.CAP_PROP_FRAME_COUNT
+        )
+    )
+
+    duration_sec = (
+        total_frames / fps
+        if fps > 0
+        else 0.0
+    )
+
+    print()
+    print(
+        "Video"
+    )
+    print(
+        "----------------------------------------"
+    )
+    print(
+        f"FPS        : {fps:.3f}"
+    )
+    print(
+        f"Resolution : {width}x{height}"
+    )
+    print(
+        f"Frames     : {total_frames:,}"
+    )
+    print(
+        f"Duration   : "
+        f"{format_video_time(duration_sec)}"
+    )
+
+    fourcc = (
+        cv2.VideoWriter_fourcc(
+            *"mp4v"
+        )
+    )
+
+    for _, event in (
+        detected_df.iterrows()
+    ):
+
+        event_id = int(
+            event[
+                "event_id"
+            ]
+        )
+
+        start_sec = max(
+            0.0,
+            float(
+                event[
+                    "clip_start_sec"
+                ]
+            ),
+        )
+
+        end_sec = min(
+            duration_sec,
+            float(
+                event[
+                    "clip_end_sec"
+                ]
+            ),
+        )
+
+        start_frame = max(
+            0,
+            int(
+                np.floor(
+                    start_sec
+                    * fps
+                )
+            ),
+        )
+
+        end_frame = min(
+            total_frames - 1,
+            int(
+                np.ceil(
+                    end_sec
+                    * fps
+                )
+            ),
+        )
+
+        output_path = (
+            clip_dir
+            /
+            f"type2_{event_id:03d}.mp4"
+        )
+
+        print(
+            f"[CLIP {event_id:03d}] "
+            f"{format_video_time(start_sec)} "
+            f"~ "
+            f"{format_video_time(end_sec)} "
+            f"| "
+            f"{end_sec-start_sec:.2f}s "
+            f"| "
+            f"frame "
+            f"{start_frame}~{end_frame}"
+        )
+
+        cap.set(
+            cv2.CAP_PROP_POS_FRAMES,
+            start_frame,
+        )
+
+        writer = cv2.VideoWriter(
+            str(output_path),
+            fourcc,
+            fps,
+            (
+                width,
+                height,
+            ),
+        )
+
+        if not writer.isOpened():
+
+            cap.release()
+
+            raise RuntimeError(
+                f"Cannot create video: "
+                f"{output_path}"
+            )
+
+        frame_idx = (
+            start_frame
+        )
+
+        while (
+            frame_idx
+            <= end_frame
+        ):
+
+            ok, frame = (
+                cap.read()
+            )
+
+            if (
+                not ok
+                or
+                frame is None
+            ):
+                break
+
+            writer.write(
+                frame
+            )
+
+            frame_idx += 1
+
+        writer.release()
+
+    cap.release()
 
 
 # ============================================================
@@ -1430,54 +1610,112 @@ def search_two_rules(
 
 def main():
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Phase E-3 v2: "
+            "Type2 CST-UP detection and clip extraction"
+        )
+    )
+
+    # --------------------------------------------------------
+    # Input
+    # --------------------------------------------------------
 
     parser.add_argument(
         "--signals",
         required=True,
-        help="motion_signals.csv",
+        help="Phase E-1 motion_signals.csv",
     )
 
     parser.add_argument(
         "--timestamps",
         required=True,
-        help="blade_in_out_timestamp.xlsx",
+        help="Ground-truth Excel",
     )
 
     parser.add_argument(
-        "--anchors",
+        "--video",
         required=True,
-        help="Phase E3 detected_events.csv",
+        help="Original long MP4",
     )
 
     parser.add_argument(
         "--output",
-        default=
-            "phase_e3_anchor_calibration",
+        default="phase_e3_result",
+    )
+
+    # --------------------------------------------------------
+    # CST band
+    # --------------------------------------------------------
+
+    parser.add_argument(
+        "--cst-up-min-dy",
+        type=float,
+        default=-8.0,
+        help=(
+            "Type2 CST-UP lower bound "
+            "(exclusive)"
+        ),
     )
 
     parser.add_argument(
-        "--pre-sec",
+        "--cst-up-max-dy",
         type=float,
-        default=3.0,
+        default=-2.0,
+        help=(
+            "Type2 CST-UP upper bound "
+            "(inclusive)"
+        ),
+    )
+
+    # --------------------------------------------------------
+    # Clip margin
+    # --------------------------------------------------------
+
+    parser.add_argument(
+        "--pre-margin",
+        type=float,
+        default=0.5,
     )
 
     parser.add_argument(
-        "--post-sec",
+        "--post-margin",
         type=float,
-        default=3.0,
+        default=0.5,
+    )
+
+    # --------------------------------------------------------
+    # Debug / validation
+    # --------------------------------------------------------
+
+    parser.add_argument(
+        "--no-export",
+        action="store_true",
+        help=(
+            "Detection/GT evaluation만 수행하고 "
+            "MP4 clip은 저장하지 않는다."
+        ),
     )
 
     args = parser.parse_args()
 
-    cfg = Config()
+    # ========================================================
+    # Config
+    # ========================================================
 
-    cfg.feature_pre_sec = (
-        args.pre_sec
-    )
+    cfg = Config(
 
-    cfg.feature_post_sec = (
-        args.post_sec
+        cst_up_min_dy=
+            args.cst_up_min_dy,
+
+        cst_up_max_dy=
+            args.cst_up_max_dy,
+
+        pre_margin_sec=
+            args.pre_margin,
+
+        post_margin_sec=
+            args.post_margin,
     )
 
     output_dir = Path(
@@ -1490,16 +1728,38 @@ def main():
     )
 
     # ========================================================
-    # Load
+    # Load Signals
     # ========================================================
 
     print(
-        "Loading signals..."
+        "Loading motion signals..."
     )
 
     signals = pd.read_csv(
         args.signals
     )
+
+    required_columns = [
+        "frame_idx",
+        "time_sec",
+        "cst_dy",
+        f"{cfg.blade_name}_motion_ratio",
+    ]
+
+    missing_columns = [
+        column
+        for column
+        in required_columns
+        if column
+        not in signals.columns
+    ]
+
+    if missing_columns:
+
+        raise ValueError(
+            "Missing signal columns: "
+            f"{missing_columns}"
+        )
 
     signals = (
         signals
@@ -1511,438 +1771,443 @@ def main():
         )
     )
 
-    anchors = pd.read_csv(
-        args.anchors
+    print(
+        f"Signal rows: "
+        f"{len(signals):,}"
     )
+
+    print()
+    print(
+        "Type2 CST-UP band"
+    )
+    print(
+        "----------------------------------------"
+    )
+
+    print(
+        f"{cfg.cst_up_min_dy:.3f} "
+        f"< cst_dy <= "
+        f"{cfg.cst_up_max_dy:.3f}"
+    )
+
+    # ========================================================
+    # Detect Type2 CST-UP
+    # ========================================================
+
+    cst_events = (
+        detect_cst_up_events(
+            signals,
+            cfg,
+        )
+    )
+
+    print()
+    print(
+        f"CST UP anchors: "
+        f"{len(cst_events)}"
+    )
+
+    # ========================================================
+    # Build events
+    # ========================================================
+
+    detected = (
+        build_type2_events(
+            signals,
+            cst_events,
+            cfg,
+        )
+    )
+
+    detected_df = (
+        pd.DataFrame(
+            detected
+        )
+    )
+
+    # ========================================================
+    # Human-readable time
+    # ========================================================
+
+    if len(detected_df):
+
+        time_columns = [
+            "cst_start_sec",
+            "cst_peak_sec",
+            "cst_end_sec",
+            "clip_start_sec",
+            "clip_end_sec",
+        ]
+
+        for column in time_columns:
+
+            detected_df[
+                column.replace(
+                    "_sec",
+                    "_time",
+                )
+            ] = (
+                detected_df[
+                    column
+                ]
+                .apply(
+                    format_video_time
+                )
+            )
+
+    # ========================================================
+    # Save detection CSV
+    # ========================================================
+
+    detected_path = (
+        output_dir
+        /
+        "detected_events.csv"
+    )
+
+    detected_df.to_csv(
+        detected_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    # ========================================================
+    # Load GT
+    # ========================================================
 
     gt = load_gt(
         args.timestamps
     )
 
-    print(
-        f"Signals : "
-        f"{len(signals):,}"
-    )
-
-    print(
-        f"Anchors : "
-        f"{len(anchors)}"
-    )
-
-    print(
-        f"GT      : "
-        f"{len(gt)}"
+    gt_type2_count = int(
+        (
+            gt[
+                "type"
+            ]
+            ==
+            "type_2"
+        ).sum()
     )
 
     # ========================================================
-    # Matching
+    # GT evaluation
     # ========================================================
 
-    matches = (
-        match_anchors_to_gt(
-            anchors,
-            gt,
-            cfg,
-        )
+    (
+        comparison,
+        matched_detected_indices,
+    ) = compare_with_gt(
+        detected_df,
+        gt,
+        cfg,
     )
 
-    print()
-    print(
-        "========================================"
-    )
-    print(
-        "Anchor / GT Matching"
-    )
-    print(
-        "========================================"
+    comparison_path = (
+        output_dir
+        /
+        "gt_comparison.csv"
     )
 
-    print(
-        f"Matched anchors : "
-        f"{len(matches)}/"
-        f"{len(anchors)}"
+    comparison.to_csv(
+        comparison_path,
+        index=False,
+        encoding="utf-8-sig",
     )
 
-    unmatched_anchor_count = (
-        len(anchors)
-        -
-        len(matches)
+    matched_count = int(
+        comparison[
+            "matched"
+        ].sum()
     )
 
-    unmatched_gt_count = (
-        len(gt)
+    detected_count = (
+        len(detected_df)
+    )
+
+    extra_count = (
+        detected_count
         -
         len(
+            matched_detected_indices
+        )
+    )
+
+    recall = (
+        matched_count
+        /
+        gt_type2_count
+        if gt_type2_count
+        else 0.0
+    )
+
+    precision = (
+        len(
+            matched_detected_indices
+        )
+        /
+        detected_count
+        if detected_count
+        else 0.0
+    )
+
+    # ========================================================
+    # Sequence statistics
+    # ========================================================
+
+    if detected_count:
+
+        blade_in_found = int(
+            detected_df[
+                "blade_in_start_sec"
+            ]
+            .notna()
+            .sum()
+        )
+
+        blade_out_found = int(
+            detected_df[
+                "blade_out_start_sec"
+            ]
+            .notna()
+            .sum()
+        )
+
+        full_boundary_found = int(
+            (
+                detected_df[
+                    "blade_in_start_sec"
+                ].notna()
+                &
+                detected_df[
+                    "blade_out_start_sec"
+                ].notna()
+            ).sum()
+        )
+
+        fallback_in_count = int(
+            (
+                detected_df[
+                    "blade_in_source"
+                ]
+                ==
+                "fallback"
+            ).sum()
+        )
+
+        fallback_out_count = int(
+            (
+                detected_df[
+                    "blade_out_source"
+                ]
+                ==
+                "fallback"
+            ).sum()
+        )
+
+    else:
+
+        blade_in_found = 0
+        blade_out_found = 0
+        full_boundary_found = 0
+        fallback_in_count = 0
+        fallback_out_count = 0
+
+    # ========================================================
+    # Console result
+    # ========================================================
+
+    print()
+    print(
+        "========================================"
+    )
+    print(
+        "Phase E-3 v2 Detection Result"
+    )
+    print(
+        "========================================"
+    )
+
+    print(
+        f"GT Type2            : "
+        f"{gt_type2_count}"
+    )
+
+    print(
+        f"Detected candidates : "
+        f"{detected_count}"
+    )
+
+    print(
+        f"Matched Type2       : "
+        f"{matched_count}"
+    )
+
+    print(
+        f"Missed Type2        : "
+        f"{gt_type2_count - matched_count}"
+    )
+
+    print(
+        f"Extra candidates    : "
+        f"{extra_count}"
+    )
+
+    print(
+        f"Recall              : "
+        f"{recall:.4f}"
+    )
+
+    print(
+        f"Precision           : "
+        f"{precision:.4f}"
+    )
+
+    print()
+    print(
+        "Sequence boundary"
+    )
+    print(
+        "----------------------------------------"
+    )
+
+    print(
+        f"Blade IN found      : "
+        f"{blade_in_found}/"
+        f"{detected_count}"
+    )
+
+    print(
+        f"Blade OUT found     : "
+        f"{blade_out_found}/"
+        f"{detected_count}"
+    )
+
+    print(
+        f"Both found          : "
+        f"{full_boundary_found}/"
+        f"{detected_count}"
+    )
+
+    print(
+        f"Blade IN fallback   : "
+        f"{fallback_in_count}"
+    )
+
+    print(
+        f"Blade OUT fallback  : "
+        f"{fallback_out_count}"
+    )
+
+    # ========================================================
+    # Candidate details
+    # ========================================================
+
+    if detected_count:
+
+        print()
+        print(
+            "Detected CST-UP anchors"
+        )
+        print(
+            "----------------------------------------"
+        )
+
+        for _, row in (
+            detected_df.iterrows()
+        ):
+
+            print(
+                f"#{int(row['event_id']):02d} "
+                f"{format_video_time(row['cst_peak_sec'])} "
+                f"dy={row['cst_peak_dy']:.4f} "
+                f"| IN={row['blade_in_source']} "
+                f"| OUT={row['blade_out_source']} "
+                f"| clip={row['clip_duration_sec']:.2f}s"
+            )
+
+    # ========================================================
+    # Missed GT
+    # ========================================================
+
+    missed = (
+        comparison[
+            ~comparison[
+                "matched"
+            ]
+        ]
+    )
+
+    if len(missed):
+
+        print()
+        print(
+            "MISSED Type2"
+        )
+        print(
+            "----------------------------------------"
+        )
+
+        print(
+            missed[
+                [
+                    "slot",
+                    "gt_start_sec",
+                    "gt_end_sec",
+                ]
+            ].to_string(
+                index=False
+            )
+        )
+
+    # ========================================================
+    # Extra candidates
+    # ========================================================
+
+    if detected_count:
+
+        extra_indices = (
             set(
-                gt_idx
-                for gt_idx, _
-                in matches.values()
+                detected_df.index
             )
-        )
-    )
-
-    print(
-        f"Unmatched anchor : "
-        f"{unmatched_anchor_count}"
-    )
-
-    print(
-        f"Unmatched GT     : "
-        f"{unmatched_gt_count}"
-    )
-
-    # ========================================================
-    # Feature extraction
-    # ========================================================
-
-    rows = []
-
-    for anchor_idx, (
-        gt_idx,
-        distance,
-    ) in matches.items():
-
-        anchor = anchors.loc[
-            anchor_idx
-        ]
-
-        gt_row = gt.loc[
-            gt_idx
-        ]
-
-        features = (
-            extract_anchor_features(
-                signals,
-                anchor,
-                gt_row,
-                cfg,
+            -
+            set(
+                matched_detected_indices
             )
         )
 
-        if features is None:
-            continue
-
-        features[
-            "gt_match_distance_sec"
-        ] = distance
-
-        rows.append(
-            features
-        )
-
-    feature_df = pd.DataFrame(
-        rows
-    )
-
-    feature_df = (
-        feature_df
-        .sort_values(
-            "anchor_sec"
-        )
-        .reset_index(
-            drop=True
-        )
-    )
-
-    feature_path = (
-        output_dir
-        /
-        "anchor_features.csv"
-    )
-
-    feature_df.to_csv(
-        feature_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
-
-    # ========================================================
-    # Class distribution
-    # ========================================================
-
-    print()
-    print(
-        "Class distribution"
-    )
-    print(
-        "----------------------------------------"
-    )
-
-    print(
-        feature_df[
-            "type"
-        ].value_counts()
-    )
-
-    # ========================================================
-    # Single Rule Search
-    # ========================================================
-
-    print()
-    print(
-        "Searching single rules..."
-    )
-
-    single_rules = (
-        search_single_rules(
-            feature_df,
-            cfg,
-        )
-    )
-
-    single_path = (
-        output_dir
-        /
-        "single_rule_results.csv"
-    )
-
-    single_rules.to_csv(
-        single_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
-
-    # ========================================================
-    # Candidate Features
-    # ========================================================
-
-    candidates = (
-        select_feature_candidates(
-            single_rules,
-            cfg,
-        )
-    )
-
-    # ========================================================
-    # Two Rule Search
-    # ========================================================
-
-    print(
-        "Searching two-rule combinations..."
-    )
-
-    two_rules = (
-        search_two_rules(
-            feature_df,
-            candidates,
-            cfg,
-        )
-    )
-
-    two_path = (
-        output_dir
-        /
-        "two_rule_results.csv"
-    )
-
-    two_rules.to_csv(
-        two_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
-
-    # ========================================================
-    # Summary
-    # ========================================================
-
-    print()
-    print(
-        "========================================"
-    )
-    print(
-        "Calibration Result"
-    )
-    print(
-        "========================================"
-    )
-
-    # --------------------------------------------------------
-    # Best single rule
-    # --------------------------------------------------------
-
-    if len(single_rules):
-
-        perfect_single = (
-            single_rules[
-                single_rules[
-                    "recall"
-                ]
-                >=
-                cfg.min_recall
-            ]
-        )
-
-        if len(perfect_single):
-
-            best = (
-                perfect_single.iloc[0]
-            )
+        if extra_indices:
 
             print()
             print(
-                "BEST SINGLE RULE"
+                "EXTRA candidates"
             )
-
             print(
                 "----------------------------------------"
             )
 
-            print(
-                f"{best['feature']} "
-                f"{best['op']} "
-                f"{best['threshold']:.8f}"
-            )
-
-            print(
-                f"TP={int(best['tp'])} "
-                f"TN={int(best['tn'])} "
-                f"FP={int(best['fp'])} "
-                f"FN={int(best['fn'])}"
-            )
-
-            print(
-                f"Recall    = "
-                f"{best['recall']:.4f}"
-            )
-
-            print(
-                f"Precision = "
-                f"{best['precision']:.4f}"
-            )
-
-    # --------------------------------------------------------
-    # Best 2-rule
-    # --------------------------------------------------------
-
-    if len(two_rules):
-
-        perfect_pair = (
-            two_rules[
-                two_rules[
-                    "recall"
+            extra_df = (
+                detected_df.loc[
+                    sorted(
+                        extra_indices
+                    )
                 ]
-                >=
-                cfg.min_recall
-            ]
-        )
-
-        if len(perfect_pair):
-
-            best = (
-                perfect_pair.iloc[0]
-            )
-
-            print()
-            print(
-                "BEST TWO-RULE"
             )
 
             print(
-                "----------------------------------------"
-            )
-
-            print(
-                f"{best['feature1']} "
-                f"{best['op1']} "
-                f"{best['threshold1']:.8f}"
-            )
-
-            print(
-                "AND"
-            )
-
-            print(
-                f"{best['feature2']} "
-                f"{best['op2']} "
-                f"{best['threshold2']:.8f}"
-            )
-
-            print(
-                f"TP={int(best['tp'])} "
-                f"TN={int(best['tn'])} "
-                f"FP={int(best['fp'])} "
-                f"FN={int(best['fn'])}"
-            )
-
-            print(
-                f"Recall    = "
-                f"{best['recall']:.4f}"
-            )
-
-            print(
-                f"Precision = "
-                f"{best['precision']:.4f}"
+                extra_df[
+                    [
+                        "event_id",
+                        "cst_peak_sec",
+                        "cst_peak_dy",
+                    ]
+                ].to_string(
+                    index=False
+                )
             )
 
     # ========================================================
-    # Top rules
+    # Output paths
     # ========================================================
-
-    print()
-    print(
-        "Top 10 Single Rules"
-    )
-    print(
-        "----------------------------------------"
-    )
-
-    if len(single_rules):
-
-        print(
-            single_rules[
-                [
-                    "feature",
-                    "op",
-                    "threshold",
-                    "tp",
-                    "tn",
-                    "fp",
-                    "fn",
-                    "recall",
-                    "precision",
-                ]
-            ]
-            .head(10)
-            .to_string(
-                index=False
-            )
-        )
-
-    print()
-    print(
-        "Top 10 Two-Rules"
-    )
-    print(
-        "----------------------------------------"
-    )
-
-    if len(two_rules):
-
-        print(
-            two_rules[
-                [
-                    "feature1",
-                    "op1",
-                    "threshold1",
-
-                    "feature2",
-                    "op2",
-                    "threshold2",
-
-                    "tp",
-                    "tn",
-                    "fp",
-                    "fn",
-
-                    "recall",
-                    "precision",
-                ]
-            ]
-            .head(10)
-            .to_string(
-                index=False
-            )
-        )
 
     print()
     print(
@@ -1953,16 +2218,52 @@ def main():
     )
 
     print(
-        feature_path
+        f"Detected CSV : "
+        f"{detected_path}"
     )
 
     print(
-        single_path
+        f"GT comparison: "
+        f"{comparison_path}"
     )
 
-    print(
-        two_path
-    )
+    # ========================================================
+    # Export clips
+    # ========================================================
+
+    if (
+        not args.no_export
+        and
+        detected_count
+    ):
+
+        print()
+        print(
+            "Exporting Type2 clips..."
+        )
+
+        export_clips(
+            Path(
+                args.video
+            ),
+            detected_df,
+            output_dir
+            /
+            "clips",
+        )
+
+        print()
+        print(
+            "Clip export complete."
+        )
+
+    elif args.no_export:
+
+        print()
+        print(
+            "[INFO] --no-export: "
+            "clip export skipped."
+        )
 
 
 if __name__ == "__main__":
