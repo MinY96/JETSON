@@ -1,0 +1,27 @@
+slot	measurement_frame 육안 판정 결과
+1	상단 Wafer와 좀 더 간격이 벌어져야 함
+2	pass
+3	pass
+4	상단 Wafer와 좀 더 간격이 벌어져야 함
+5	상단 Wafer와 좀 더 간격이 벌어져야 함(거의 pass)
+6	pass
+7	pass
+8	pass
+9	상단 Wafer와 좀 더 간격이 벌어져야 함(상단 Wafer와 거의 붙어있음)
+10	pass
+11	pass
+12	pass
+13	Blade가 OUT 되고 있음(Out 시작한 지 얼마 안됨, pass로 볼수도 있으나 1~2전 프레임이 더 나을듯)
+14	Blade가 OUT 되고 있음(Out 시작한 지 얼마 안됨, pass로 볼수도 있으나 1~2전 프레임이 더 나을듯)
+15	pass
+16	pass
+17	pass
+18	pass
+19	pass
+20	상단 Wafer와 좀 더 간격이 벌어져야 함
+21	상단 Wafer와 좀 더 간격이 벌어져야 함
+22	Blade가 OUT 되고 있음(Out 시작한 지 얼마 안됨, pass로 볼수도 있으나 1~2전 프레임이 더 나을듯)
+23	상단 Wafer와 좀 더 간격이 벌어져야 함(상단 Wafer와 거의 붙어있음)
+24	pass
+25	Blade가 OUT 되고 있음(Out 시작한 지 얼마 안됨, pass로 볼수도 있으나 1~2전 프레임이 더 나을듯)
+
