@@ -1,0 +1,18 @@
+# EPI CST Type2 / Wafer Gap ROI configuration
+# Format: (x, y, width, height), original video pixel coordinates
+# Keep separate ROIs for motion analysis, frame selection and gap measurement.
+
+# Cassette movement (CST)
+cst_motion_roi = (2039, 110, 149, 654)
+
+# Three Blade motion candidates; event classifier reads candidate 2 (blade2).
+blade_motion_candidate_1_roi = (16, 267, 621, 360)
+blade_motion_primary_roi = (309, 379, 1593, 236)
+blade_motion_candidate_3_roi = (74, 300, 1109, 302)
+
+# Blade departure onset / frame selection
+blade_departure_roi = (309, 359, 1593, 216)
+
+# Blade reference matching and full-width Wafer Y detection
+blade_template_search_roi = (50, 300, 620, 250)
+wafer_measurement_roi = (50, 315, 620, 235)
