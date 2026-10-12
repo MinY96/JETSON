@@ -2,7 +2,8 @@
 1차로 너가 만든 phase_c_intergrated_pipeline.py 안에서 참조하는 스크립트들의 원본이야. (파일명과 코드가 일부 수정되어서 보여주는 거야)
 그리고 해당 파일들은 실제 프로젝트에서는 scrips 라는 폴더 내에 존재해.
 그래서 나는 다음과 같이 코드를 수정했어.
-    # Existing script paths
+
+# Existing script paths
     parser.add_argument(
         "--e1-script",
         default="scripts/phase_e1_01_extract_motion_signals_v2.py",
