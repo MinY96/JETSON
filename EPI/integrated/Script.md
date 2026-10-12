@@ -1,3 +1,5 @@
+https://github.com/MinY96/JETSON/edit/main/EPI/integrated
+
 해당 폴더에 있는 파일들은 phase_c 코드에서 참조하는 스크립트들이야.
 1차로 너가 만든 phase_c_intergrated_pipeline.py 안에서 참조하는 스크립트들의 원본이야. (파일명과 코드가 일부 수정되어서 보여주는 거야)
 그리고 해당 파일들은 실제 프로젝트에서는 scrips 라는 폴더 내에 존재해.
