@@ -1,24 +1,20 @@
-현재 진행한, 검증 완료 단계의 머신비전 자료를 만들려고 해.
-
-1페이지
-페이지 좌/우 분할해서 
-좌) 공통된 제약 사항:
-- DVR 장치 : 동축 연결 방식으로 인해 네트워크 스트리밍 방식으로 영상 수집 불가(RTSP 미지원)
-- 중국산(Hikvision) CCTV 보안 이슈로 인해 사내망 연결 불가
-우) 도입한 방식
-- CCTV -> DVR
-- DVR -> 모니터 + 젯슨나노(캡쳐 보드)
-- 캡쳐 보드 사용 : CCTV 모니터 화면을 그대로 캡쳐해오는 방식
-- 한계점: 모니터 화면을 그대로 가져오기 때문에 화면을 조작하거나, 다른 CCTV를 틀어놓을 경우 판정 불가
-- 추가 활용 방안: cctv별 화면을 고정된 n분할 화면 위치에 띄우고 추론 PC에서 따로 crop하여 동시에 n개의 cctv 분석
-
-2,3,4 페이지 CMP, PHOTO, WET 순서대로 다음 포맷으로 1페이지 자료 작성
-페이지 좌/우 분할해서 
-좌, 상단) 문제 사항
-좌, 중단) 과제 목표
-좌: 하단) 검증 결과: POC 단계면 검증 결과, 완성이면 완성 결과
-우, 상단) 추론 결과/판정 이미지(판정 overlay 이미지 위주)]
-우, 하단) 주요 로직, 적용 기법: 로직, 기법당 간단한 한줄 소개
-
-너가 페이지를 만들라는 건 아니고 각 페이지에 들어갈 내용 만들면 좋겠어.
-CMP, PHOTO, WET은 첨부한 기술보고서 자료를 참고하면 돼
+2026-10-27 15:39:56,511 ERROR src.collectors.ftp.collector - [SMDI06] Recipe download failed: YV17_1565PAD3
+Traceback (most recent call last):
+  File "D:\개발\5_DM_RMS\3_dm_backup\fab1_v2\src\collectors\ftp\collector.py", line 263, in _scan_recipe
+    safe_download_recipe(ftp, entry.name, dest, required)
+  File "D:\개발\5_DM_RMS\3_dm_backup\fab1_v2\src\collectors\ftp\client.py", line 88, in safe_download_recipe
+    ftp_download_tree(ftp, recipe, stage)
+  File "D:\개발\5_DM_RMS\3_dm_backup\fab1_v2\src\collectors\ftp\client.py", line 63, in ftp_download_tree
+    entries = list_entries(ftp)
+              ^^^^^^^^^^^^^^^^^
+  File "D:\개발\5_DM_RMS\3_dm_backup\fab1_v2\src\collectors\ftp\client.py", line 49, in list_entries
+    ftp.retrlines("LIST", lines.append)
+  File "C:\Users\10007166\AppData\Local\anaconda3\Lib\ftplib.py", line 461, in retrlines
+    resp = self.sendcmd('TYPE A')
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\10007166\AppData\Local\anaconda3\Lib\ftplib.py", line 281, in sendcmd
+    return self.getresp()
+           ^^^^^^^^^^^^^^
+  File "C:\Users\10007166\AppData\Local\anaconda3\Lib\ftplib.py", line 254, in getresp
+    raise error_perm(resp)
+ftplib.error_perm: 550 /d:/KT1025/Usr/Ins8/OD42_666562UM/YV17_1565PAD3: No such file or directory.
