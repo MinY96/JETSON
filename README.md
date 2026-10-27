@@ -18,3 +18,11 @@ Traceback (most recent call last):
   File "C:\Users\10007166\AppData\Local\anaconda3\Lib\ftplib.py", line 254, in getresp
     raise error_perm(resp)
 ftplib.error_perm: 550 /d:/KT1025/Usr/Ins8/OD42_666562UM/YV17_1565PAD3: No such file or directory.
+
+2026-10-27 15:51:26,776 ERROR src.collectors.ftp.collector - [SMDI06] Recipe download failed: NS31_852562UM
+Traceback (most recent call last):
+  File "D:\개발\5_DM_RMS\3_dm_backup\fab1_v2\src\collectors\ftp\collector.py", line 263, in _scan_recipe
+    safe_download_recipe(ftp, entry.name, dest, required)
+  File "D:\개발\5_DM_RMS\3_dm_backup\fab1_v2\src\collectors\ftp\client.py", line 91, in safe_download_recipe
+    raise FTPDownloadError(
+src.collectors.ftp.client.FTPDownloadError: Required recipe file missing/empty: NS31_852562UM/ins.dat
