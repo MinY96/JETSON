@@ -1,114 +1,64 @@
-CST detection
-----------------------------------------
-Motion threshold : cst_dy <= -2.000
-Type2 event peak : -8.000 < event_min_dy <= -2.000
+안녕하세요.
 
-Raw CST movement events: 49
+CCTV 기반 Wet 공정 이상탐지 과제의 현재 진행 현황을 공유드립니다.
+11월 30일까지 1차 모델링을 완료하고 실제 영상을 기반으로 테스트하는 것을 목표로 진행 중입니다.
 
-Raw CST movement peaks
-----------------------------------------
-#01 00:07:38.400 dy=-16.6837 [REJECT]
-#02 00:07:53.933 dy=-4.8863 [TYPE2]
-#03 00:10:39.600 dy=-14.1640 [REJECT]
-#04 00:10:55.400 dy=-5.0407 [TYPE2]
-#05 00:12:22.400 dy=-14.0851 [REJECT]
-#06 00:12:38.200 dy=-5.0781 [TYPE2]
-#07 00:13:57.133 dy=-14.1453 [REJECT]
-#08 00:14:12.867 dy=-4.9653 [TYPE2]
-#09 00:18:30.333 dy=-14.0161 [REJECT]
-#10 00:18:46.200 dy=-4.9984 [TYPE2]
-#11 00:20:13.333 dy=-14.0170 [REJECT]
-#12 00:20:29.133 dy=-4.8754 [TYPE2]
-#13 00:21:51.067 dy=-14.0073 [REJECT]
-#14 00:22:07.067 dy=-4.9493 [TYPE2]
-#15 00:26:21.600 dy=-14.0567 [REJECT]
-#16 00:26:37.533 dy=-4.8983 [TYPE2]
-#17 00:28:11.933 dy=-13.9456 [REJECT]
-#18 00:28:27.800 dy=-4.9776 [TYPE2]
-#19 00:29:37.067 dy=-10.8628 [REJECT]
-#20 00:29:53.133 dy=-4.9656 [TYPE2]
-#21 00:34:32.867 dy=-14.0481 [REJECT]
-#22 00:34:48.867 dy=-5.1391 [TYPE2]
-#23 00:37:52.733 dy=-14.0597 [REJECT]
-#24 00:38:08.533 dy=-5.0300 [TYPE2]
-#25 00:40:41.733 dy=-10.9386 [REJECT]
-#26 00:40:57.867 dy=-5.1397 [TYPE2]
-#27 00:43:26.333 dy=-10.9486 [REJECT]
-#28 00:43:42.400 dy=-5.1372 [TYPE2]
-#29 00:49:45.067 dy=-16.7449 [REJECT]
-#30 00:50:00.667 dy=-5.0260 [TYPE2]
-#31 00:51:42.467 dy=-16.6077 [REJECT]
-#32 00:51:58.000 dy=-4.9188 [TYPE2]
-#33 00:53:20.067 dy=-16.5965 [REJECT]
-#34 00:53:35.800 dy=-5.0425 [TYPE2]
-#35 00:56:03.267 dy=-16.7404 [REJECT]
-#36 00:56:18.933 dy=-5.0024 [TYPE2]
-#37 00:58:00.133 dy=-16.8392 [REJECT]
-#38 00:58:15.733 dy=-4.9075 [TYPE2]
-#39 00:59:41.133 dy=-16.6240 [REJECT]
-#40 00:59:56.800 dy=-5.1863 [TYPE2]
-#41 01:02:11.267 dy=-13.9959 [REJECT]
-#42 01:02:27.133 dy=-5.1344 [TYPE2]
-#43 01:04:16.533 dy=-14.2530 [REJECT]
-#44 01:04:32.267 dy=-5.0546 [TYPE2]
-#45 01:06:35.533 dy=-12.2558 [REJECT]
-#46 01:06:51.467 dy=-5.1066 [TYPE2]
-#47 01:10:40.000 dy=-5.0865 [TYPE2]
-#48 01:12:26.600 dy=-5.1283 [TYPE2]
-#49 01:16:59.333 dy=-31.2055 [REJECT]
+1. 분석 방법론
+- 4분할 CCTV 영상 중 View1~3을 각각 독립적인 검사 영역으로 구성
+- Gate*를 통해 각 View별 검사 가능 시점을 먼저 판별한 후, 해당 시점의 영상만 이상탐지 단계로 전달
+- Gate는 SIFT* + Homography* 기반 Multi-Template Matching*을 적용하여 View별 Anchor* 1장 + Auxiliary* 3장으로 구성
+- 검사 시점 영상은 기준 좌표로 정렬한 후, 정상 데이터 기반 이상탐지 모델인 PatchCore*를 이용하여 잔여 Wafer 등 비정상 물체를 검출
 
-Type2 CST-UP anchors: 25
+[분석 흐름]
+CCTV → View 분할 → 검사시점 판별(Gate) → 영상 정렬 → PatchCore 이상탐지 → 이상 판정
 
-========================================
-Phase E-3 v3 Detection Result
-========================================
-GT Type2            : 25
-Detected candidates : 25
-Matched Type2       : 25
-Missed Type2        : 0
-Extra candidates    : 0
-Recall              : 1.0000
-Precision           : 1.0000
 
-Sequence boundary
-----------------------------------------
-Blade IN found      : 25/25
-Blade OUT found     : 25/25
-Both found          : 25/25
-Blade IN fallback   : 0
-Blade OUT fallback  : 0
+2. 수집 데이터셋
+- Raw Data: 약 14GB / 약 15.4만 Frame
+- 대상: Wet 공정 CCTV 영상
+- 분석 영역: View1~3 (View4는 현재 제외)
 
-Detected Type2 CST-UP anchors
-----------------------------------------
-#01 raw=#02 00:07:53.933 dy=-4.8863 | IN=blade | OUT=blade | clip=3.13s
-#02 raw=#04 00:10:55.400 dy=-5.0407 | IN=blade | OUT=blade | clip=3.13s
-#03 raw=#06 00:12:38.200 dy=-5.0781 | IN=blade | OUT=blade | clip=3.13s
-#04 raw=#08 00:14:12.867 dy=-4.9653 | IN=blade | OUT=blade | clip=3.20s
-#05 raw=#10 00:18:46.200 dy=-4.9984 | IN=blade | OUT=blade | clip=3.20s
-#06 raw=#12 00:20:29.133 dy=-4.8754 | IN=blade | OUT=blade | clip=3.20s
-#07 raw=#14 00:22:07.067 dy=-4.9493 | IN=blade | OUT=blade | clip=3.27s
-#08 raw=#16 00:26:37.533 dy=-4.8983 | IN=blade | OUT=blade | clip=3.27s
-#09 raw=#18 00:28:27.800 dy=-4.9776 | IN=blade | OUT=blade | clip=3.13s
-#10 raw=#20 00:29:53.133 dy=-4.9656 | IN=blade | OUT=blade | clip=3.27s
-#11 raw=#22 00:34:48.867 dy=-5.1391 | IN=blade | OUT=blade | clip=3.20s
-#12 raw=#24 00:38:08.533 dy=-5.0300 | IN=blade | OUT=blade | clip=3.20s
-#13 raw=#26 00:40:57.867 dy=-5.1397 | IN=blade | OUT=blade | clip=3.33s
-#14 raw=#28 00:43:42.400 dy=-5.1372 | IN=blade | OUT=blade | clip=3.27s
-#15 raw=#30 00:50:00.667 dy=-5.0260 | IN=blade | OUT=blade | clip=3.20s
-#16 raw=#32 00:51:58.000 dy=-4.9188 | IN=blade | OUT=blade | clip=3.20s
-#17 raw=#34 00:53:35.800 dy=-5.0425 | IN=blade | OUT=blade | clip=3.20s
-#18 raw=#36 00:56:18.933 dy=-5.0024 | IN=blade | OUT=blade | clip=3.33s
-#19 raw=#38 00:58:15.733 dy=-4.9075 | IN=blade | OUT=blade | clip=3.20s
-#20 raw=#40 00:59:56.800 dy=-5.1863 | IN=blade | OUT=blade | clip=3.20s
-#21 raw=#42 01:02:27.133 dy=-5.1344 | IN=blade | OUT=blade | clip=3.20s
-#22 raw=#44 01:04:32.267 dy=-5.0546 | IN=blade | OUT=blade | clip=3.20s
-#23 raw=#46 01:06:51.467 dy=-5.1066 | IN=blade | OUT=blade | clip=3.47s
-#24 raw=#47 01:10:40.000 dy=-5.0865 | IN=blade | OUT=blade | clip=3.47s
-#25 raw=#48 01:12:26.600 dy=-5.1283 | IN=blade | OUT=blade | clip=3.53s
+[데이터 활용]
+Raw CCTV 약 15.4만 Frame
+→ 일정 간격(2 FPS) Sampling
+→ View별 Gate Dataset 생성
+→ Train 3,571장 / Validation 1,513장 (View별)
+→ 검사 가능/불가능 시점 라벨링
+→ Gate 기준값 최적화
+→ 검사 가능 정상 Frame만 정렬·추출
+→ PatchCore 정상 학습 Dataset 구성
 
-Output
-----------------------------------------
-Detected CSV : output\03_extract_clips\detected_events.csv
-GT comparison: output\03_extract_clips\gt_comparison.csv
+현재는 Raw Data 전체를 모델에 직접 입력하는 방식이 아니라, 공정 상태를 대표할 수 있도록 Sampling 후 Gate 학습/검증에 활용하고 있으며, 이후 검사 가능한 정상 영상만 선별하여 PatchCore 학습 데이터로 사용할 예정입니다.
 
-[INFO] --no-export: clip export skipped.
+
+3. 현재 Status
+
+CCTV/ROI 정의 → Multi-Template Gate 구성 → Gate Dataset 구축 → [Gate Dataset 라벨링] → Gate Calibration → 정상 Dataset 구축 → PatchCore 모델링 → 영상 Test
+    완료                완료                    완료                 ■ 현재 진행                예정                 예정                   예정                11/30 목표
+
+[완료]
+- CCTV View 분할 및 분석 영역 정의
+- View별 Multi-Template 및 Search/Template ROI 정의
+- Gate Dataset 생성 및 Train/Validation 분리
+
+[진행 중]
+- Gate Dataset 검사 가능/불가능 시점 라벨링
+
+[예정]
+- Gate 기준값 Calibration 및 성능 검증
+- 정상 영상 정렬 및 PatchCore 학습 Dataset 구축
+- PatchCore 모델링 및 이상판정 Threshold 설정
+- 실제 CCTV 영상 기반 통합 Test
+
+11월 30일까지 Gate + PatchCore 기반 1차 모델링을 완료하고 실제 CCTV 영상에서 이상탐지 성능을 확인할 예정입니다.
+
+
+※ 주요 기법
+- Gate: 현재 영상이 실제 이상탐지를 수행해야 하는 공정 시점인지 먼저 판단하는 전처리 단계입니다. 공정 중 움직임이나 작업 상태를 이상으로 잘못 판단하는 것을 방지하기 위해 사용합니다.
+- SIFT: 이미지 내에서 모서리·패턴 등 특징적인 지점을 찾아 서로 다른 영상 간 동일 위치를 매칭하는 기법입니다. CCTV 영상에서 설비 위치가 조금 달라져도 동일한 공정 상태를 찾기 위해 사용합니다.
+- Homography: 두 영상 사이의 위치·회전·원근 차이를 보정하는 좌표 변환 기법입니다. Gate Matching 및 이후 이상탐지 영상의 좌표 정렬에 활용합니다.
+- Multi-Template Matching: 하나의 기준 이미지만 사용하는 대신 여러 정상 기준 이미지와 비교하는 방식입니다. 조명·반사·미세 위치 변화에 따른 Gate 오검출을 줄이기 위해 적용했습니다.
+- Anchor / Auxiliary: Anchor는 최종 좌표 정렬의 기준이 되는 대표 Template이며, Auxiliary는 정상 상태의 다양한 모습까지 검출 범위를 넓히기 위한 보조 Template입니다.
+- PatchCore: 정상 이미지만 학습한 뒤 정상 패턴과 다른 영역을 이상으로 탐지하는 비지도 이상탐지 기법입니다. 사전에 모든 불량 유형을 확보하기 어려운 잔여 Wafer 검출에 적용할 예정입니다.
+
+감사합니다.
